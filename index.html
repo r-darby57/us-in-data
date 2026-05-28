@@ -17,9 +17,9 @@
     // === DEMO ===        Built-in 500-message demo dataset
     // === PARSERS ===     iMessage CSV, WhatsApp .txt/.zip,
                            Generic CSV + column mapping
-    // === ANALYSIS ===    Stats, words, bigrams, sentiment,
-                           emojis, love-language, nicknames,
-                           streaks, response time, timeline
+    // === ANALYSIS ===    Stats, words, bigrams, emojis,
+                           love-language, nicknames, streaks,
+                           response time, heatmap, timeline
     // === RENDERING ===   Charts, lists, timeline, extras
     // === UI ===          File handling, nav, customize panel
   ============================================================
@@ -45,6 +45,7 @@
     --success: #a8d4a8;
     --border: rgba(245, 235, 232, 0.08);
   }
+  html { overflow-x: hidden; }
   html, body { background: var(--bg); color: var(--text); }
   body {
     font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
@@ -137,11 +138,12 @@
   .dropzone {
     border: 1.5px dashed rgba(232,165,184,0.35);
     border-radius: 16px;
-    padding: 28px;
+    padding: 28px 18px;
     text-align: center;
     transition: background 200ms ease, border-color 200ms ease;
     background: rgba(232,165,184,0.03);
   }
+  @media (max-width: 420px) { .dropzone { padding: 22px 14px; } }
   .dropzone.hover { background: rgba(232,165,184,0.08); border-color: var(--rose); }
 
   /* Hearts in hero */
@@ -288,14 +290,197 @@
   details[open] .chev { transform: rotate(180deg); }
   .chev { transition: transform 200ms ease; }
 
-  /* Memory Lane bubble */
-  .bubble {
-    border-radius: 18px; padding: 10px 14px; max-width: 80%;
-    font-size: 14px; line-height: 1.4;
+  /* Activity heatmap */
+  .heatmap {
+    display: grid;
+    grid-template-columns: 28px repeat(24, minmax(0, 1fr));
+    grid-template-rows: 14px repeat(7, minmax(0, 1fr));
+    gap: 3px;
+    min-height: 200px;
   }
-  .bubble.a { background: rgba(232,165,184,0.18); color: var(--text); border: 1px solid rgba(232,165,184,0.25); }
-  .bubble.b { background: rgba(212,175,122,0.16); color: var(--text); border: 1px solid rgba(212,175,122,0.25); margin-left: auto; }
-  .bubble-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  @media (max-width: 480px) {
+    .heatmap {
+      grid-template-columns: 22px repeat(24, minmax(0, 1fr));
+      gap: 2px;
+      min-height: 160px;
+    }
+    .heatmap .h-rowlabel { font-size: 9px; padding-right: 2px; }
+    .heatmap .h-collabel { font-size: 9px; }
+  }
+  .heatmap .h-cell {
+    border-radius: 3px;
+    aspect-ratio: 1 / 1;
+    background: rgba(232,165,184,0.06);
+    transition: transform 120ms ease, outline 120ms ease;
+  }
+  .heatmap .h-cell:hover {
+    outline: 1.5px solid var(--rose);
+    transform: scale(1.15);
+    position: relative; z-index: 2;
+  }
+  .heatmap .h-rowlabel,
+  .heatmap .h-collabel {
+    font-size: 10px; color: var(--muted);
+    display: flex; align-items: center;
+    user-select: none;
+  }
+  .heatmap .h-rowlabel { justify-content: flex-end; padding-right: 4px; }
+  .heatmap .h-collabel { justify-content: center; }
+  .heatmap-legend { display: inline-flex; gap: 3px; }
+  .heatmap-legend span {
+    width: 12px; height: 12px; border-radius: 2px; display: inline-block;
+  }
+
+  /* Conversation patterns rows */
+  .pat-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: baseline; }
+  .pat-label { color: var(--muted); font-size: 13px; }
+  .pat-val { color: var(--text); font-family: 'Fraunces', Georgia, serif; font-size: 18px; line-height: 1.1; }
+  .pat-sub { color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+  /* Year tiles */
+  .year-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+  /* Cap single-tile width so it doesn't stretch */
+  .year-grid > .year-tile:only-child { max-width: 280px; }
+  .year-tile {
+    background: linear-gradient(180deg, rgba(36,24,41,0.85), rgba(26,18,32,0.85));
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px;
+    position: relative;
+  }
+  .year-tile .year-num {
+    font-family: 'Fraunces', Georgia, serif; font-size: 24px;
+    color: var(--rose);
+  }
+  .year-tile .year-count {
+    font-family: 'Fraunces', Georgia, serif; font-size: 22px;
+    color: var(--text);
+    margin-top: 2px;
+  }
+  .year-tile .year-unit { color: var(--muted); font-size: 12px; font-family: 'Inter', sans-serif; margin-left: 4px; }
+  .year-tile .year-row { display: flex; justify-content: space-between; align-items: center; font-size: 12px; margin-top: 6px; color: var(--muted); }
+  .year-tile .year-row .v { color: var(--text); font-weight: 500; }
+
+  /* Section fade-in on scroll */
+  .reveal {
+    opacity: 0; transform: translateY(12px);
+    transition: opacity 600ms ease, transform 600ms ease;
+  }
+  .reveal.in { opacity: 1; transform: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { opacity: 1; transform: none; transition: none; }
+  }
+
+  /* Story of Us strip */
+  .story-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+  @media (max-width: 900px) {
+    .story-strip {
+      display: flex;
+      gap: 12px;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      padding-bottom: 4px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .story-card { flex: 0 0 78%; scroll-snap-align: start; }
+  }
+  .story-card {
+    background: linear-gradient(180deg, rgba(36,24,41,0.92), rgba(26,18,32,0.92));
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    min-height: 160px;
+  }
+  .story-card::before {
+    content: "";
+    position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, var(--rose), var(--gold));
+    opacity: 0.7;
+  }
+  .story-card .story-label {
+    font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.1em; font-weight: 500;
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 8px;
+  }
+  .story-card .story-icon { width: 14px; height: 14px; color: var(--rose); }
+  .story-card.gold .story-icon { color: var(--gold); }
+  .story-card .story-quote {
+    font-family: 'Fraunces', Georgia, serif;
+    font-style: italic;
+    color: var(--text);
+    font-size: 15px; line-height: 1.45;
+    flex: 1;
+  }
+  .story-card .story-meta {
+    margin-top: 10px;
+    font-size: 11px; color: var(--muted);
+  }
+  .story-card .story-big {
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: 36px; line-height: 1;
+    color: var(--text);
+    margin: 4px 0 8px;
+  }
+  .story-card .story-big-unit {
+    font-size: 14px; color: var(--muted);
+    font-family: 'Inter', sans-serif; font-style: normal;
+    margin-left: 4px;
+  }
+  .story-card.empty .story-quote { color: var(--muted); font-style: normal; }
+
+  /* Memory Lane — iMessage-style chat bubbles */
+  .mem-day {
+    text-align: center; color: var(--muted);
+    font-size: 11px; letter-spacing: 0.04em;
+    text-transform: uppercase; font-weight: 500;
+    margin: 4px 0 10px;
+  }
+  .mem-row {
+    display: flex; flex-direction: column;
+    margin-bottom: 2px;
+  }
+  .mem-row.a { align-items: flex-start; }
+  .mem-row.b { align-items: flex-end; }
+  .mem-row + .mem-row { margin-top: 2px; }
+  .mem-row.spaced { margin-top: 10px; }
+  .mem-sender {
+    font-size: 11px; color: var(--muted);
+    padding: 0 12px 2px; line-height: 1;
+  }
+  .bubble {
+    border-radius: 18px; padding: 9px 14px; max-width: 78%;
+    font-size: 14px; line-height: 1.4;
+    word-wrap: break-word; overflow-wrap: anywhere;
+    position: relative;
+  }
+  .bubble.a {
+    background: rgba(232,165,184,0.18); color: var(--text);
+    border: 1px solid rgba(232,165,184,0.28);
+    border-bottom-left-radius: 6px;
+  }
+  .bubble.b {
+    background: rgba(212,175,122,0.18); color: var(--text);
+    border: 1px solid rgba(212,175,122,0.30);
+    border-bottom-right-radius: 6px;
+  }
+  .bubble-time {
+    display: block; font-size: 10px; color: var(--muted);
+    padding: 2px 6px 0;
+  }
+  .mem-row.a .bubble-time { text-align: left; }
+  .mem-row.b .bubble-time { text-align: right; }
 
   /* Visibility helpers */
   .hidden-until { display: none; }
@@ -443,7 +628,7 @@
     <div class="flex items-center gap-2">
       <span class="chip" title="All parsing and rendering runs in your browser">
         <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor" aria-hidden="true"><path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4zm-1 11l-2-2-1.4 1.4L11 15.8l5.4-5.4L15 9l-4 4z"/></svg>
-        100% Local
+        <span class="hidden sm:inline">100% Local</span><span class="sm:hidden">Local</span>
       </span>
       <button id="customizeBtn" class="btn btn-ghost" aria-haspopup="dialog" aria-controls="customizePanel" title="Customize">
         <svg viewBox="0 0 24 24" class="w-4 h-4" fill="currentColor" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4l-2.1-.5a7 7 0 0 0-.6-1.5l1.1-1.8-2.1-2.1-1.8 1.1a7 7 0 0 0-1.5-.6L13 4h-2l-.5 2.1a7 7 0 0 0-1.5.6L7.2 5.6 5.1 7.7l1.1 1.8a7 7 0 0 0-.6 1.5L3.5 11.5v2L5.6 14a7 7 0 0 0 .6 1.5l-1.1 1.8 2.1 2.1 1.8-1.1c.5.3 1 .5 1.5.6L11 21h2l.5-2.1c.5-.1 1-.3 1.5-.6l1.8 1.1 2.1-2.1-1.1-1.8c.3-.5.5-1 .6-1.5L21 13.5v-1.5z"/></svg>
@@ -466,7 +651,7 @@
   </div>
   <div class="max-w-6xl mx-auto px-4 pt-10 pb-8 relative">
     <p class="chip mb-4"><svg class="sparkle" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5L12 2zm6 12l.9 2.6L21.5 17l-2.6.4L18 20l-.9-2.6L14.5 17l2.6-.4L18 14z"/></svg> A love letter, in data</p>
-    <h1 class="serif text-4xl sm:text-5xl md:text-6xl leading-tight tracking-tight">
+    <h1 class="serif text-2xl sm:text-5xl md:text-6xl leading-tight tracking-tight" style="overflow-wrap:break-word;hyphens:auto;">
       Every text, <span class="hero-italic text-[var(--rose)]">every late-night</span> 🌙 reply,
       <br class="hidden sm:block"/> mapped into something beautiful.
     </h1>
@@ -546,7 +731,7 @@
 <main id="dash" class="max-w-6xl mx-auto px-4 pb-24 space-y-12">
 
   <!-- OVERVIEW -->
-  <section id="overview" aria-labelledby="ovh">
+  <section id="overview" class="reveal" aria-labelledby="ovh">
     <div class="flex items-end justify-between mb-4">
       <div>
         <p class="label">Section 01</p>
@@ -555,7 +740,7 @@
       <span class="text-xs text-[var(--muted)]" id="overviewMeta"></span>
     </div>
 
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+    <div class="grid grid-cols-2 gap-3 sm:gap-4">
       <div class="card p-4">
         <div class="label">Total messages</div>
         <div class="serif text-3xl sm:text-4xl mt-1" id="kpiTotal">—</div>
@@ -564,15 +749,15 @@
         <div class="label">Date range</div>
         <div class="serif text-lg sm:text-xl mt-1" id="kpiRange">—</div>
       </div>
-      <div class="card p-4">
-        <div class="label">Longest streak</div>
-        <div class="serif text-3xl sm:text-4xl mt-1" id="kpiStreak">—</div>
-        <div class="text-xs text-[var(--muted)] mt-1">consecutive days, both texting</div>
+    </div>
+
+    <!-- Story of Us strip -->
+    <div class="mt-6">
+      <div class="flex items-end justify-between mb-3">
+        <h3 class="serif text-lg sm:text-xl">The story so far</h3>
+        <span class="text-xs text-[var(--muted)]">moments from your data</span>
       </div>
-      <div class="card p-4">
-        <div class="label">First message</div>
-        <div class="text-sm mt-1" id="kpiFirst">—</div>
-      </div>
+      <div id="storyStrip" class="story-strip"></div>
     </div>
 
     <div class="grid lg:grid-cols-3 gap-4 mt-4">
@@ -590,6 +775,35 @@
       </div>
     </div>
 
+    <!-- Year-by-year tiles -->
+    <div class="card p-4 mt-4">
+      <div class="flex items-center justify-between mb-3">
+        <div class="serif text-lg">Year by year</div>
+        <div class="text-xs text-[var(--muted)]">snapshots, one per year</div>
+      </div>
+      <div id="yearTiles" class="year-grid"></div>
+    </div>
+
+    <!-- Activity heatmap -->
+    <div class="card p-4 mt-4">
+      <div class="flex items-center justify-between mb-2">
+        <div class="serif text-lg">When you two talk</div>
+        <div class="text-xs text-[var(--muted)]" id="heatHint">day of week × hour of day</div>
+      </div>
+      <div id="heatmap" class="heatmap" aria-label="Activity heatmap by day of week and hour of day" role="img"></div>
+      <div class="flex items-center justify-end gap-2 mt-3 text-xs text-[var(--muted)]">
+        <span>fewer</span>
+        <div class="heatmap-legend" aria-hidden="true">
+          <span style="background:rgba(232,165,184,0.06)"></span>
+          <span style="background:rgba(232,165,184,0.20)"></span>
+          <span style="background:rgba(232,165,184,0.40)"></span>
+          <span style="background:rgba(232,165,184,0.65)"></span>
+          <span style="background:rgba(232,165,184,0.95)"></span>
+        </div>
+        <span>more</span>
+      </div>
+    </div>
+
     <div class="grid md:grid-cols-2 gap-4 mt-4">
       <div class="card p-4">
         <div class="serif text-lg mb-2">Average reply time</div>
@@ -597,17 +811,17 @@
         <div class="text-xs text-[var(--muted)] mt-2">Only counts replies within 24h.</div>
       </div>
       <div class="card p-4">
-        <div class="serif text-lg mb-2">Heat by hour</div>
-        <div style="height: 220px"><canvas id="chartHour" aria-label="Messages by hour of day" role="img"></canvas></div>
+        <div class="serif text-lg mb-2">Conversation patterns</div>
+        <div id="convoPatterns" class="space-y-3 text-sm"></div>
       </div>
     </div>
   </section>
 
   <!-- WORDS -->
-  <section id="words" aria-labelledby="wdh">
+  <section id="words" class="reveal" aria-labelledby="wdh">
     <div class="mb-4">
       <p class="label">Section 02</p>
-      <h2 id="wdh" class="serif text-2xl sm:text-3xl">Words &amp; Sentiment</h2>
+      <h2 id="wdh" class="serif text-2xl sm:text-3xl">Words &amp; Emojis</h2>
     </div>
     <div class="flex flex-wrap gap-2 mb-4">
       <label class="toggle-label">
@@ -667,17 +881,10 @@
       </div>
     </div>
 
-    <div class="card p-4 mt-4">
-      <div class="flex items-center justify-between mb-1">
-        <div class="serif text-lg">Sentiment over time</div>
-        <div class="text-xs text-[var(--muted)]">positive − negative (lexicon-based)</div>
-      </div>
-      <div style="height: clamp(200px, 28vw, 280px)"><canvas id="chartSent" aria-label="Sentiment over time chart" role="img"></canvas></div>
-    </div>
   </section>
 
   <!-- TIMELINE -->
-  <section id="timeline" aria-labelledby="tlh">
+  <section id="timeline" class="reveal" aria-labelledby="tlh">
     <div class="flex items-end justify-between mb-4">
       <div>
         <p class="label">Section 03</p>
@@ -705,7 +912,7 @@
   </section>
 
   <!-- EXTRAS -->
-  <section id="extras" aria-labelledby="exh">
+  <section id="extras" class="reveal" aria-labelledby="exh">
     <div class="flex items-end justify-between mb-4">
       <div>
         <p class="label">Section 04</p>
@@ -824,23 +1031,6 @@ your yours yourself yourselves yeah yep nope ok okay just like u r ur im youre i
 got get gonna wanna hey hi hello bye lol haha hahaha lmao omg yes no n y k thanks thx pls please oh ah
 yea ya nah uh um hmm well actually really also still even still ya'll yall there's there's would'a
 `.trim().split(/\s+/));
-
-// Sentiment lexicon (lightweight — tuned for SMS tone, not formal text)
-const POS_WORDS = new Set([
-  "love","loved","loving","loves","adore","amazing","awesome","beautiful","best","bliss","cute","cuddle",
-  "dream","excited","fantastic","fav","favorite","fun","funny","glad","good","gorgeous","grateful","great",
-  "happy","heart","hug","incredible","kind","kiss","kisses","laugh","laughing","lovely","luck","lucky",
-  "miss","missyou","nice","perfect","precious","pretty","proud","romantic","safe","smile","smiles","sunshine",
-  "sweet","sweetheart","thanks","thank","thrilled","wonderful","xo","xoxo","yes","yummy","baby","babe",
-  "honey","muah","mwah","❤️","❤","💕","💖","💗","💘","💞","💓","💝","😍","🥰","😘","🤗","🥺","☀️","🌙"
-]);
-const NEG_WORDS = new Set([
-  "angry","annoyed","awful","bad","boring","broken","cried","crying","disappointed","dread","dreadful",
-  "fail","failure","fight","frustrated","hate","hated","hates","horrible","hurt","hurts","kill","lonely",
-  "lost","mad","mess","miserable","never","no","panic","pissed","sad","scared","sick","sorry","stupid",
-  "stress","stressed","suck","sucks","terrible","tired","ugh","unhappy","upset","worried","worst","yuck",
-  "ugly","damn","fuck","shit","wtf","argh","😡","😠","😢","😭","😞","😔","💔","😩","😣"
-]);
 
 // Built-in nicknames
 const BUILTIN_NICKS = [
@@ -1179,9 +1369,12 @@ function analyze(rows, senders, opts){
 
   // Hour-of-day distribution
   const hours = { [A]: Array(24).fill(0), [B]: Array(24).fill(0) };
+  // Day-of-week × hour-of-day heatmap (combined)
+  const heatmap = Array.from({length:7}, () => Array(24).fill(0));
   for (const r of rows) {
     if (r.sender !== A && r.sender !== B) continue;
     hours[r.sender][r.date.getHours()] += 1;
+    heatmap[r.date.getDay()][r.date.getHours()] += 1;
   }
 
   // Reply times (within 24h)
@@ -1200,9 +1393,43 @@ function analyze(rows, senders, opts){
     return s.length % 2 ? s[mid] : (s[mid-1]+s[mid])/2;
   };
   const avg = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null;
+  const pct = (arr, p) => {
+    if (!arr.length) return null;
+    const s = [...arr].sort((a,b)=>a-b);
+    const idx = Math.min(s.length-1, Math.floor(p * (s.length-1)));
+    return s[idx];
+  };
   const replyStats = {
-    [A]: { mean: avg(replies[A]), median: median(replies[A]), n: replies[A].length },
-    [B]: { mean: avg(replies[B]), median: median(replies[B]), n: replies[B].length }
+    [A]: { mean: avg(replies[A]), median: median(replies[A]), p90: pct(replies[A], 0.9), n: replies[A].length },
+    [B]: { mean: avg(replies[B]), median: median(replies[B]), p90: pct(replies[B], 0.9), n: replies[B].length }
+  };
+
+  // Conversation initiation (after >= 4h quiet gap) + double-text counts
+  const GAP_MIN = 4 * 60;
+  const initiations = { [A]: 0, [B]: 0 };
+  const doubleTexts = { [A]: 0, [B]: 0 };
+  const sent = { [A]: 0, [B]: 0 };
+  let lastDate = null, lastSender = null;
+  for (const r of rows) {
+    if (r.sender !== A && r.sender !== B) continue;
+    sent[r.sender] += 1;
+    if (lastDate == null) {
+      initiations[r.sender] += 1;
+    } else {
+      const diffMin = (r.date - lastDate) / 60000;
+      if (diffMin >= GAP_MIN) initiations[r.sender] += 1;
+      else if (r.sender === lastSender) doubleTexts[r.sender] += 1;
+    }
+    lastDate = r.date; lastSender = r.sender;
+  }
+  const convo = {
+    initiations,
+    doubleTexts,
+    doubleRate: {
+      [A]: sent[A] ? doubleTexts[A] / sent[A] : 0,
+      [B]: sent[B] ? doubleTexts[B] / sent[B] : 0
+    },
+    sent
   };
 
   // Longest streak — consecutive days where BOTH partners sent ≥1
@@ -1250,27 +1477,6 @@ function analyze(rows, senders, opts){
     for (const e of extractEmojis(r.message)) bumpMap(emTarget, e);
   }
   const topN = (m, n) => [...m.entries()].sort((a,b)=>b[1]-a[1]).slice(0, n);
-
-  // Sentiment by month
-  const sentMonths = {};
-  for (const r of rows) {
-    if (r.sender !== A && r.sender !== B) continue;
-    const k = monthKey(r.date);
-    sentMonths[k] = sentMonths[k] || { pos: 0, neg: 0, total: 0 };
-    const txt = r.message.toLowerCase();
-    const toks = tokenize(r.message);
-    let p = 0, n = 0;
-    for (const t of toks) {
-      if (POS_WORDS.has(t)) p++;
-      if (NEG_WORDS.has(t)) n++;
-    }
-    // Emojis count too
-    for (const e of extractEmojis(r.message)) {
-      if (POS_WORDS.has(e)) p++;
-      if (NEG_WORDS.has(e)) n++;
-    }
-    sentMonths[k].pos += p; sentMonths[k].neg += n; sentMonths[k].total += 1;
-  }
 
   // Love language scores
   const ll = {};
@@ -1339,17 +1545,50 @@ function analyze(rows, senders, opts){
   const themeOrdered = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
   const theme = themeOrdered[0]?.[0] || "loving";
 
+  // Year-by-year aggregates
+  const byYear = {};
+  for (const r of rows) {
+    if (r.sender !== A && r.sender !== B) continue;
+    const y = r.date.getFullYear();
+    byYear[y] = byYear[y] || { count: 0, words: new Map(), emojis: new Map(), days: new Map() };
+    byYear[y].count += 1;
+    const dk = dayKey(r.date);
+    byYear[y].days.set(dk, (byYear[y].days.get(dk) || 0) + 1);
+    for (const t of tokenize(r.message)) {
+      if (STOPWORDS.has(t)) continue;
+      if (customEx.has(t)) continue;
+      byYear[y].words.set(t, (byYear[y].words.get(t) || 0) + 1);
+    }
+    for (const e of extractEmojis(r.message)) {
+      byYear[y].emojis.set(e, (byYear[y].emojis.get(e) || 0) + 1);
+    }
+  }
+  const yearStats = Object.keys(byYear).sort().map(y => {
+    const o = byYear[y];
+    const topW = [...o.words.entries()].sort((a,b)=>b[1]-a[1])[0];
+    const topE = [...o.emojis.entries()].sort((a,b)=>b[1]-a[1])[0];
+    const topD = [...o.days.entries()].sort((a,b)=>b[1]-a[1])[0];
+    return {
+      year: +y,
+      count: o.count,
+      topWord: topW ? topW[0] : null,
+      topEmoji: topE ? topE[0] : null,
+      topDay: topD ? { date: new Date(topD[0]), count: topD[1] } : null
+    };
+  });
+
   return {
     total, dateRange, byPerson,
     months, monthKeys,
-    hours,
+    hours, heatmap,
     replyStats,
+    convo,
+    yearStats,
     streak: { length: best, start: bestStart },
     first,
     words: { [A]: topN(wcA, 20), [B]: topN(wcB, 20), _fullA: wcA, _fullB: wcB },
     bigrams: { [A]: topN(biA, 10), [B]: topN(biB, 10) },
     emojis:  { [A]: topN(emA, 10), [B]: topN(emB, 10) },
-    sentMonths,
     ll,
     nicknames: { [A]: topNicks(A), [B]: topNicks(B) },
     bigDay: bigDay ? { date: new Date(bigDay), count: bigDayN } : null,
@@ -1419,12 +1658,87 @@ function destroyChart(key){
   if (STATE.charts[key]) { STATE.charts[key].destroy(); delete STATE.charts[key]; }
 }
 
+// SVG icons used inside Story-of-Us cards
+const STORY_ICONS = {
+  message: '<svg class="story-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 21l1.9-5.4A8 8 0 1 1 21 12z"/></svg>',
+  heart:   '<svg class="story-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 11c0 5.65-7 10-7 10z"/></svg>',
+  spike:   '<svg class="story-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3 17l5-6 4 4 5-6 4 4v5H3z"/></svg>',
+  streak:  '<svg class="story-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>'
+};
+
+function snippet(s, n){
+  if (!s) return "";
+  s = s.replace(/\s+/g," ").trim();
+  return s.length > n ? s.slice(0, n).trimEnd() + "…" : s;
+}
+
+function renderStoryStrip(a){
+  const cards = [];
+
+  // First message
+  if (a.first) {
+    cards.push(`
+      <div class="story-card">
+        <div class="story-label">${STORY_ICONS.message} First message</div>
+        <div class="story-quote">"${escapeHTML(snippet(a.first.message, 100))}"</div>
+        <div class="story-meta">${escapeHTML(a.first.sender)} · ${fmtDate(a.first.date)}</div>
+      </div>`);
+  }
+
+  // First "I love you"
+  if (a.iLoveYou) {
+    cards.push(`
+      <div class="story-card gold">
+        <div class="story-label">${STORY_ICONS.heart} First "I love you"</div>
+        <div class="story-quote">"${escapeHTML(snippet(a.iLoveYou.message, 100))}"</div>
+        <div class="story-meta">${escapeHTML(a.iLoveYou.sender)} · ${fmtDate(a.iLoveYou.date)}</div>
+      </div>`);
+  } else {
+    cards.push(`
+      <div class="story-card empty">
+        <div class="story-label">${STORY_ICONS.heart} First "I love you"</div>
+        <div class="story-quote">not in this dataset yet</div>
+        <div class="story-meta">&nbsp;</div>
+      </div>`);
+  }
+
+  // Biggest day
+  if (a.bigDay) {
+    cards.push(`
+      <div class="story-card">
+        <div class="story-label">${STORY_ICONS.spike} Most-texted day</div>
+        <div class="story-big">${a.bigDay.count.toLocaleString()}<span class="story-big-unit">messages</span></div>
+        <div class="story-meta">${fmtDate(a.bigDay.date)}</div>
+      </div>`);
+  }
+
+  // Longest streak
+  if (a.streak && a.streak.length > 0) {
+    const startD = a.streak.start ? new Date(a.streak.start) : null;
+    cards.push(`
+      <div class="story-card gold">
+        <div class="story-label">${STORY_ICONS.streak} Longest streak</div>
+        <div class="story-big">${a.streak.length}<span class="story-big-unit">days, both texting</span></div>
+        <div class="story-meta">${startD ? "starting " + fmtDate(startD) : "&nbsp;"}</div>
+      </div>`);
+  } else {
+    cards.push(`
+      <div class="story-card empty">
+        <div class="story-label">${STORY_ICONS.streak} Longest streak</div>
+        <div class="story-quote">no overlapping days yet</div>
+        <div class="story-meta">&nbsp;</div>
+      </div>`);
+  }
+
+  $("#storyStrip").innerHTML = cards.join("");
+}
+
 function renderOverview(a){
   const [A, B] = STATE.senders;
   const colA = CONFIG.partnerA.color, colB = CONFIG.partnerB.color;
 
-  $("#kpiTotal").textContent = a.total.toLocaleString();
-  $("#heroCount").textContent = a.total.toLocaleString();
+  animateNumber($("#kpiTotal"), a.total, 900);
+  animateNumber($("#heroCount"), a.total, 900);
   if (a.dateRange) {
     const [s,e] = a.dateRange;
     const txt = `${fmtDate(s)} → ${fmtDate(e)}`;
@@ -1432,10 +1746,7 @@ function renderOverview(a){
     $("#heroRange").textContent = `${A} & ${B} · ${txt}`;
   }
   $("#overviewMeta").textContent = `${A} & ${B}`;
-  $("#kpiStreak").textContent = a.streak.length > 0 ? `${a.streak.length}d` : "—";
-  $("#kpiFirst").innerHTML = a.first
-    ? `<span class="text-[var(--rose)] serif">"${escapeHTML(a.first.message.slice(0,80))}${a.first.message.length>80?"…":""}"</span><div class="text-xs text-[var(--muted)] mt-1">— ${escapeHTML(a.first.sender)}, ${fmtDate(a.first.date)}</div>`
-    : "—";
+  renderStoryStrip(a);
 
   // Messages per month line chart
   destroyChart("month");
@@ -1484,34 +1795,105 @@ function renderOverview(a){
     <div class="flex items-center justify-between"><span><span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${colB};margin-right:6px"></span>${escapeHTML(B)}</span><span class="text-[var(--text)]">${bCount.toLocaleString()} <span class="text-[var(--muted)]">· ${pct(bCount)}%</span></span></div>
   `;
 
-  // Reply stats
+  // Reply stats — median + p90 (more honest than average; long tails dominate avg)
   $("#replyStats").innerHTML = [A,B].map(s => {
     const r = a.replyStats[s];
     return `<div class="flex items-center justify-between"><span><span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${s===A?colA:colB};margin-right:6px"></span>${escapeHTML(s)}</span>
-      <span><span class="text-[var(--text)]">${fmtMinutes(r.median)}</span> <span class="text-xs text-[var(--muted)]">median · avg ${fmtMinutes(r.mean)}</span></span></div>`;
+      <span><span class="text-[var(--text)]">${fmtMinutes(r.median)}</span> <span class="text-xs text-[var(--muted)]">typical · slowest 10% ${fmtMinutes(r.p90)}</span></span></div>`;
   }).join("");
 
-  // Hour chart
-  destroyChart("hour");
-  const hourLabels = Array.from({length:24}, (_,i)=> (i%6===0 ? `${i}:00` : ""));
-  STATE.charts.hour = new Chart($("#chartHour"), {
-    type: "bar",
-    data: {
-      labels: hourLabels,
-      datasets: [
-        { label: A, data: a.hours[A], backgroundColor: colA + "cc", stack: "s" },
-        { label: B, data: a.hours[B], backgroundColor: colB + "cc", stack: "s" }
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { position: "bottom", labels: { color: PALETTE.muted } } },
-      scales: {
-        x: { stacked: true, grid: { display: false }, ticks: { color: PALETTE.muted } },
-        y: { stacked: true, grid: { color: PALETTE.grid }, ticks: { color: PALETTE.muted }, beginAtZero: true }
-      }
+  renderHeatmap(a);
+  renderConvoPatterns(a);
+  renderYearTiles(a);
+}
+
+// --- Activity heatmap (day-of-week × hour) ---
+function renderHeatmap(a){
+  const wrap = $("#heatmap");
+  if (!wrap) return;
+  const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  let max = 0;
+  for (let d=0; d<7; d++) for (let h=0; h<24; h++) max = Math.max(max, a.heatmap[d][h]);
+  const intensity = v => {
+    if (!v || !max) return 0;
+    // perceptual scaling: sqrt to compress long-tail
+    return Math.sqrt(v / max);
+  };
+  const cellColor = v => {
+    const t = intensity(v);
+    if (t === 0) return "rgba(232,165,184,0.05)";
+    // Lerp from a low alpha to high alpha rose
+    const alpha = 0.10 + t * 0.85;
+    return `rgba(232,165,184,${alpha.toFixed(3)})`;
+  };
+  const hourLabel = h => (h === 0 ? "12a" : h === 6 ? "6a" : h === 12 ? "12p" : h === 18 ? "6p" : "");
+  const parts = [];
+  // Top-left empty corner
+  parts.push('<div></div>');
+  // Column labels (hours)
+  for (let h=0; h<24; h++) {
+    parts.push(`<div class="h-collabel">${hourLabel(h)}</div>`);
+  }
+  // Rows: day label + 24 cells
+  for (let d=0; d<7; d++) {
+    parts.push(`<div class="h-rowlabel">${days[d]}</div>`);
+    for (let h=0; h<24; h++) {
+      const v = a.heatmap[d][h];
+      const title = `${days[d]} ${h}:00 — ${v.toLocaleString()} message${v===1?"":"s"}`;
+      parts.push(`<div class="h-cell" style="background:${cellColor(v)}" title="${title}" aria-label="${title}"></div>`);
     }
-  });
+  }
+  wrap.innerHTML = parts.join("");
+  // Hint with peak
+  let peakD = 0, peakH = 0, peakV = 0;
+  for (let d=0; d<7; d++) for (let h=0; h<24; h++) if (a.heatmap[d][h] > peakV) { peakV = a.heatmap[d][h]; peakD = d; peakH = h; }
+  const hint = peakV ? `Peak: ${days[peakD]} ${peakH===0?"12 AM":peakH<12?peakH+" AM":peakH===12?"12 PM":(peakH-12)+" PM"} · ${peakV.toLocaleString()} messages` : "";
+  $("#heatHint").textContent = hint || "day of week × hour of day";
+}
+
+// --- Conversation patterns ---
+function renderConvoPatterns(a){
+  const [A, B] = STATE.senders;
+  const colA = CONFIG.partnerA.color, colB = CONFIG.partnerB.color;
+  const tot = a.convo.initiations[A] + a.convo.initiations[B] || 1;
+  const initPctA = Math.round(a.convo.initiations[A] / tot * 100);
+  const initPctB = 100 - initPctA;
+  const doublePctA = Math.round(a.convo.doubleRate[A] * 100);
+  const doublePctB = Math.round(a.convo.doubleRate[B] * 100);
+
+  const dot = c => `<span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${c};margin-right:6px"></span>`;
+
+  $("#convoPatterns").innerHTML = `
+    <div>
+      <div class="pat-label">Starts the conversation</div>
+      <div class="mt-1 grid grid-cols-2 gap-3 items-center">
+        <div>${dot(colA)}<span class="pat-val">${initPctA}%</span> <span class="text-xs text-[var(--muted)]">${escapeHTML(A)}</span></div>
+        <div>${dot(colB)}<span class="pat-val">${initPctB}%</span> <span class="text-xs text-[var(--muted)]">${escapeHTML(B)}</span></div>
+      </div>
+      <div class="pat-sub">After ≥ 4h of quiet · ${tot.toLocaleString()} restarts</div>
+    </div>
+    <div>
+      <div class="pat-label">Double-texts <span class="text-[var(--muted)]" style="font-size:11px;">(messages back-to-back, no reply yet)</span></div>
+      <div class="mt-1 grid grid-cols-2 gap-3 items-center">
+        <div>${dot(colA)}<span class="pat-val">${doublePctA}%</span> <span class="text-xs text-[var(--muted)]">of ${escapeHTML(A)}'s</span></div>
+        <div>${dot(colB)}<span class="pat-val">${doublePctB}%</span> <span class="text-xs text-[var(--muted)]">of ${escapeHTML(B)}'s</span></div>
+      </div>
+    </div>`;
+}
+
+// --- Year-by-year tiles ---
+function renderYearTiles(a){
+  const wrap = $("#yearTiles");
+  if (!wrap) return;
+  if (!a.yearStats || !a.yearStats.length) { wrap.innerHTML = ""; return; }
+  wrap.innerHTML = a.yearStats.map(y => `
+    <div class="year-tile">
+      <div class="year-num">${y.year}</div>
+      <div class="year-count">${y.count.toLocaleString()}<span class="year-unit">messages</span></div>
+      <div class="year-row"><span>Top word</span><span class="v">${y.topWord ? escapeHTML(y.topWord) : "—"}</span></div>
+      <div class="year-row"><span>Top emoji</span><span class="v">${y.topEmoji || "—"}</span></div>
+      <div class="year-row"><span>Biggest day</span><span class="v">${y.topDay ? fmtDate(y.topDay.date) + " · " + y.topDay.count : "—"}</span></div>
+    </div>`).join("");
 }
 
 function renderWords(a){
@@ -1605,49 +1987,6 @@ function renderWords(a){
     return Math.random() < 0.5 ? CONFIG.partnerA.color : CONFIG.partnerB.color;
   });
 
-  // Sentiment chart — fit y-axis to actual data range, with a soft zero baseline
-  destroyChart("sent");
-  const keys = Object.keys(a.sentMonths).sort();
-  const data = keys.map(k => {
-    const s = a.sentMonths[k];
-    return s.total ? (s.pos - s.neg) / s.total : 0;
-  });
-  const yMin = Math.min(0, ...data, 0) - 0.05;
-  const yMax = Math.max(0.2, ...data) + 0.1;
-  const sentCanvas = $("#chartSent");
-  const sentCtx = sentCanvas.getContext("2d");
-  const grad = sentCtx.createLinearGradient(0, 0, 0, sentCanvas.height || 240);
-  grad.addColorStop(0,   "rgba(232,165,184,0.28)");
-  grad.addColorStop(0.6, "rgba(232,165,184,0.08)");
-  grad.addColorStop(1,   "rgba(232,165,184,0.00)");
-  STATE.charts.sent = new Chart(sentCanvas, {
-    type: "line",
-    data: {
-      labels: keys,
-      datasets: [{
-        label: "Sentiment",
-        data,
-        borderColor: PALETTE.rose,
-        backgroundColor: grad,
-        tension: 0.4,
-        fill: true,
-        pointRadius: 2,
-        pointBackgroundColor: PALETTE.rose
-      }]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { grid: { color: PALETTE.grid }, ticks: { color: PALETTE.muted, maxRotation: 0, autoSkip: true } },
-        y: {
-          min: yMin, max: yMax,
-          grid: { color: PALETTE.grid },
-          ticks: { color: PALETTE.muted, callback: v => v.toFixed(1) }
-        }
-      }
-    }
-  });
 }
 
 function renderTimeline(a){
@@ -1698,12 +2037,29 @@ function renderMemoryLane(){
   const a = STATE.analysis;
   if (!a) return;
   const [A] = STATE.senders;
-  const msgs = memoryLane(STATE.raw, STATE.senders, 8);
+  const msgs = memoryLane(STATE.raw, STATE.senders, 10);
   if (!msgs.length) { $("#memoryLane").innerHTML = '<div class="text-sm text-[var(--muted)]">No data.</div>'; return; }
-  $("#memMeta").textContent = fmtDate(msgs[0].date);
-  $("#memoryLane").innerHTML = msgs.map(m => `
-    <div class="flex"><div class="bubble ${m.sender===A?'a':'b'}">${escapeHTML(m.message)}<div class="bubble-meta">${escapeHTML(m.sender)} · ${m.date.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"})}</div></div></div>
-  `).join("");
+  const dayLabel = fmtDate(msgs[0].date);
+  $("#memMeta").textContent = dayLabel;
+  const parts = [`<div class="mem-day">${dayLabel}</div>`];
+  let lastSender = null;
+  let lastTime = null;
+  msgs.forEach(m => {
+    const side = m.sender === A ? "a" : "b";
+    // Only show sender label on first of consecutive same-sender messages
+    const showSender = m.sender !== lastSender;
+    // Add visual gap when sender changes or > 10 min between
+    const bigGap = lastTime && (m.date - lastTime) > 10 * 60 * 1000;
+    const spacedCls = (showSender || bigGap) ? " spaced" : "";
+    parts.push(`<div class="mem-row ${side}${spacedCls}">`);
+    if (showSender) parts.push(`<div class="mem-sender">${escapeHTML(m.sender)}</div>`);
+    parts.push(`<div class="bubble ${side}">${escapeHTML(m.message)}</div>`);
+    parts.push(`<span class="bubble-time">${m.date.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"})}</span>`);
+    parts.push(`</div>`);
+    lastSender = m.sender;
+    lastTime = m.date;
+  });
+  $("#memoryLane").innerHTML = parts.join("");
 }
 
 function renderExtras(a){
@@ -1754,6 +2110,41 @@ function pickSong(theme){
 // === UI / ORCHESTRATION ===
 // ============================================================
 
+// Smooth count-up. Respects reduced motion.
+function animateNumber(el, target, ms){
+  if (!el) return;
+  target = Number(target) || 0;
+  const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce || target < 2) { el.textContent = target.toLocaleString(); return; }
+  const start = performance.now();
+  // Ease-out cubic
+  const ease = t => 1 - Math.pow(1 - t, 3);
+  function tick(now){
+    const t = Math.min(1, (now - start) / ms);
+    const v = Math.round(target * ease(t));
+    el.textContent = v.toLocaleString();
+    if (t < 1) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+}
+
+// Scroll reveal — add .in to elements with .reveal as they enter viewport
+let _revealObs = null;
+function ensureRevealObserver(){
+  if (_revealObs) return _revealObs;
+  if (!("IntersectionObserver" in window)) {
+    document.querySelectorAll(".reveal").forEach(el => el.classList.add("in"));
+    return null;
+  }
+  _revealObs = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) { e.target.classList.add("in"); _revealObs.unobserve(e.target); }
+    }
+  }, { threshold: 0.08, rootMargin: "0px 0px -40px 0px" });
+  document.querySelectorAll(".reveal").forEach(el => _revealObs.observe(el));
+  return _revealObs;
+}
+
 function setStatus(msg, kind){
   const el = $("#fileStatus");
   if (!el) return;
@@ -1772,6 +2163,7 @@ function recompute(){
   renderWords(STATE.analysis);
   renderTimeline(STATE.analysis);
   renderExtras(STATE.analysis);
+  ensureRevealObserver();
 }
 
 function loadRows(rows){
