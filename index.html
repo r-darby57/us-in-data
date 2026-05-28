@@ -1,0 +1,1862 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Us — A Love Letter in Data</title>
+<!--
+  ============================================================
+  RELATIONSHIP TEXT MESSAGE DASHBOARD
+  ------------------------------------------------------------
+  Single-file, fully-local analytics for two-partner message
+  histories. No network calls after CDN load. All parsing,
+  analysis and rendering happen in-browser.
+
+  Architecture (search the comments below):
+    // === CONFIG ===      User-editable defaults + lexicons
+    // === DEMO ===        Built-in 500-message demo dataset
+    // === PARSERS ===     iMessage CSV, WhatsApp .txt/.zip,
+                           Generic CSV + column mapping
+    // === ANALYSIS ===    Stats, words, bigrams, sentiment,
+                           emojis, love-language, nicknames,
+                           streaks, response time, timeline
+    // === RENDERING ===   Charts, lists, timeline, extras
+    // === UI ===          File handling, nav, customize panel
+  ============================================================
+-->
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/wordcloud@1.2.2/src/wordcloud2.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f0a14;
+    --surface: #1a1220;
+    --surface-2: #241829;
+    --rose: #e8a5b8;
+    --gold: #d4af7a;
+    --plum: #9a6a8a;
+    --text: #f5ebe8;
+    --muted: #9b8a92;
+    --success: #a8d4a8;
+    --border: rgba(245, 235, 232, 0.08);
+  }
+  html, body { background: var(--bg); color: var(--text); }
+  body {
+    font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    font-feature-settings: "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    position: relative;
+    overflow-x: hidden;
+  }
+  /* Grain overlay */
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.06;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  }
+  /* Soft radial wash */
+  body::after {
+    content: "";
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+      radial-gradient(60% 40% at 80% -10%, rgba(232,165,184,0.10), transparent 70%),
+      radial-gradient(50% 35% at 10% 10%, rgba(212,175,122,0.08), transparent 70%);
+  }
+  .serif { font-family: 'Fraunces', Georgia, serif; }
+  .hero-italic { font-family: 'Fraunces', Georgia, serif; font-style: italic; font-weight: 500; }
+
+  .surface { background: var(--surface); border: 1px solid var(--border); }
+  .surface-2 { background: var(--surface-2); border: 1px solid var(--border); }
+  .card {
+    background: linear-gradient(180deg, rgba(36,24,41,0.85), rgba(26,18,32,0.85));
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.02) inset, 0 20px 40px -28px rgba(232,165,184,0.25);
+    backdrop-filter: blur(6px);
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px;
+    background: rgba(232,165,184,0.08);
+    border: 1px solid rgba(232,165,184,0.2);
+    color: var(--rose);
+    font-size: 12px; font-weight: 500;
+  }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 10px 16px; border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text);
+    font-weight: 500; font-size: 14px;
+    transition: transform 200ms ease, background 200ms ease, border-color 200ms ease;
+    min-height: 44px;
+  }
+  .btn:hover { background: #2c1d33; border-color: rgba(232,165,184,0.35); }
+  .btn-primary {
+    background: linear-gradient(180deg, #e8a5b8, #c98aa0);
+    color: #2a0f1a; border-color: rgba(255,255,255,0.15);
+    font-weight: 600;
+  }
+  .btn-primary:hover { transform: translateY(-1px); }
+  .btn-ghost { background: transparent; }
+  .input {
+    width: 100%; padding: 10px 12px; border-radius: 10px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    color: var(--text); font-size: 14px;
+    min-height: 44px;
+  }
+  .input:focus { outline: 2px solid rgba(232,165,184,0.35); outline-offset: 0; }
+  .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+
+  /* Sticky nav */
+  .nav {
+    position: sticky; top: 0; z-index: 30;
+    backdrop-filter: blur(14px);
+    background: rgba(15,10,20,0.7);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav a { color: var(--muted); font-size: 14px; padding: 8px 10px; border-radius: 8px; }
+  .nav a:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+  .nav a.active { color: var(--rose); }
+
+  /* Drop zone */
+  .dropzone {
+    border: 1.5px dashed rgba(232,165,184,0.35);
+    border-radius: 16px;
+    padding: 28px;
+    text-align: center;
+    transition: background 200ms ease, border-color 200ms ease;
+    background: rgba(232,165,184,0.03);
+  }
+  .dropzone.hover { background: rgba(232,165,184,0.08); border-color: var(--rose); }
+
+  /* Hearts in hero */
+  .hearts { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .hearts svg {
+    position: absolute; bottom: -20px; opacity: 0;
+    animation: floatup 11s linear infinite;
+    color: var(--rose);
+  }
+  .hearts svg.h1 { left: 8%;  animation-delay: 0s;  width: 14px; height: 14px; }
+  .hearts svg.h2 { left: 22%; animation-delay: 2.4s; width: 10px; height: 10px; color: var(--gold);}
+  .hearts svg.h3 { left: 40%; animation-delay: 4.8s; width: 12px; height: 12px; }
+  .hearts svg.h4 { left: 60%; animation-delay: 1.2s; width: 16px; height: 16px; color: var(--gold);}
+  .hearts svg.h5 { left: 76%; animation-delay: 6.0s; width: 11px; height: 11px; }
+  .hearts svg.h6 { left: 90%; animation-delay: 3.6s; width: 13px; height: 13px; }
+  @keyframes floatup {
+    0%   { transform: translateY(0) rotate(-4deg); opacity: 0; }
+    10%  { opacity: 0.5; }
+    50%  { opacity: 0.35; }
+    100% { transform: translateY(-260px) rotate(8deg); opacity: 0; }
+  }
+
+  /* Sparkle accent */
+  .sparkle { display: inline-block; width: 14px; height: 14px; vertical-align: -2px; color: var(--gold); }
+
+  /* Scrollbars (subtle) */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: rgba(232,165,184,0.18); border-radius: 999px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  /* Timeline */
+  .timeline {
+    position: relative;
+    padding-left: 20px;
+  }
+  .timeline::before {
+    content: "";
+    position: absolute; left: 6px; top: 4px; bottom: 4px;
+    width: 2px;
+    background: linear-gradient(180deg, var(--rose), var(--gold));
+    opacity: 0.4;
+    border-radius: 2px;
+  }
+  .timeline-item { position: relative; margin-bottom: 18px; }
+  .timeline-item::before {
+    content: "";
+    position: absolute; left: -20px; top: 6px;
+    width: 12px; height: 12px; border-radius: 999px;
+    background: var(--rose);
+    box-shadow: 0 0 0 4px rgba(232,165,184,0.15);
+  }
+  .timeline-item.gold::before { background: var(--gold); box-shadow: 0 0 0 4px rgba(212,175,122,0.15); }
+  .timeline-item.star::before {
+    background: transparent; box-shadow: none;
+    width: 16px; height: 16px; left: -22px; top: 4px;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23d4af7a'><path d='M12 2l2.39 6.36L21 9.27l-5 4.87L17.18 21 12 17.77 6.82 21 8 14.14l-5-4.87 6.61-.91L12 2z'/></svg>");
+    background-size: contain;
+    background-repeat: no-repeat;
+  }
+
+  /* Word cloud canvas wrapper */
+  .wcwrap { background: rgba(255,255,255,0.02); border-radius: 12px; overflow: hidden; }
+
+  /* Bar (love language) */
+  .bar-row { display: grid; grid-template-columns: 110px 1fr 44px; gap: 10px; align-items: center; margin-bottom: 8px; }
+  .bar-track { height: 10px; background: rgba(255,255,255,0.05); border-radius: 999px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 999px; }
+
+  /* Accordion */
+  details > summary { list-style: none; cursor: pointer; }
+  details > summary::-webkit-details-marker { display: none; }
+  details[open] .chev { transform: rotate(180deg); }
+  .chev { transition: transform 200ms ease; }
+
+  /* Memory Lane bubble */
+  .bubble {
+    border-radius: 18px; padding: 10px 14px; max-width: 80%;
+    font-size: 14px; line-height: 1.4;
+  }
+  .bubble.a { background: rgba(232,165,184,0.18); color: var(--text); border: 1px solid rgba(232,165,184,0.25); }
+  .bubble.b { background: rgba(212,175,122,0.16); color: var(--text); border: 1px solid rgba(212,175,122,0.25); margin-left: auto; }
+  .bubble-meta { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* Visibility helpers */
+  .hidden-until { display: none; }
+  .show { display: block; }
+
+  /* Focus visibility */
+  a:focus-visible, button:focus-visible, .btn:focus-visible, .input:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--rose);
+    outline-offset: 2px;
+    border-radius: 10px;
+  }
+
+  /* Tiny floating dialog */
+  .panel {
+    position: fixed; right: 16px; bottom: 16px;
+    width: min(360px, calc(100vw - 32px));
+    max-height: 70vh; overflow-y: auto;
+    z-index: 50;
+    border-radius: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: 0 30px 60px -20px rgba(0,0,0,0.6);
+    padding: 16px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hearts svg { animation: none; display: none; }
+    .btn-primary:hover { transform: none; }
+  }
+</style>
+<style>
+  /* Password gate overlay */
+  #gate {
+    position: fixed; inset: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(60% 50% at 50% 40%, rgba(36,24,41,0.95), #0f0a14 80%);
+    backdrop-filter: blur(8px);
+  }
+  #gate.hidden { display: none; }
+  #gate .gate-card {
+    max-width: 380px; width: calc(100% - 32px);
+    padding: 28px 24px;
+    background: linear-gradient(180deg, rgba(36,24,41,0.95), rgba(26,18,32,0.95));
+    border: 1px solid rgba(232,165,184,0.25);
+    border-radius: 18px;
+    box-shadow: 0 30px 80px -30px rgba(232,165,184,0.35);
+    text-align: center;
+  }
+  #gate h2 { font-family: 'Fraunces', Georgia, serif; font-size: 24px; }
+  #gate p  { color: #9b8a92; font-size: 14px; margin-top: 6px; }
+  #gate .row { margin-top: 18px; display: flex; gap: 8px; }
+  #gate input {
+    flex: 1; padding: 12px 14px; border-radius: 12px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(245,235,232,0.08);
+    color: #f5ebe8; font-size: 15px; min-height: 44px;
+  }
+  #gate input:focus { outline: 2px solid rgba(232,165,184,0.45); }
+  #gate button {
+    padding: 12px 16px; border-radius: 12px; min-height: 44px;
+    background: linear-gradient(180deg, #e8a5b8, #c98aa0);
+    color: #2a0f1a; font-weight: 600; border: 1px solid rgba(255,255,255,0.15);
+    cursor: pointer;
+  }
+  #gate .err { color: #ffb3b3; font-size: 13px; margin-top: 10px; min-height: 1em; }
+</style>
+</head>
+<body class="relative z-10">
+
+<!-- ====================== PASSWORD GATE ====================== -->
+<!--
+  Soft client-side gate. To change the password, replace GATE_HASH below
+  with the SHA-256 hex digest of your chosen string. Generate with:
+    node -e "console.log(require('crypto').createHash('sha256').update('your-password').digest('hex'))"
+-->
+<div id="gate" role="dialog" aria-modal="true" aria-labelledby="gateTitle">
+  <div class="gate-card">
+    <svg viewBox="0 0 24 24" width="28" height="28" fill="#e8a5b8" aria-hidden="true" style="margin-bottom:6px"><path d="M12 21s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 11c0 5.65-7 10-7 10z"/></svg>
+    <h2 id="gateTitle">Just for us</h2>
+    <p>Enter the password to continue.</p>
+    <form id="gateForm" autocomplete="off">
+      <div class="row">
+        <input id="gateInput" type="password" placeholder="Password" autofocus aria-label="Password" />
+        <button type="submit">Open</button>
+      </div>
+      <div class="err" id="gateErr" aria-live="polite"></div>
+    </form>
+  </div>
+</div>
+<script>
+  (function(){
+    const GATE_HASH = "862e5d593a99e2469eb051b0e0e386646d1d4b8c88ef4a1627ec1b0389702924";
+    const KEY = "rdash:gate:v1";
+    const gate = document.getElementById("gate");
+    const form = document.getElementById("gateForm");
+    const input = document.getElementById("gateInput");
+    const err = document.getElementById("gateErr");
+
+    async function sha256Hex(s) {
+      const data = new TextEncoder().encode(s);
+      const buf = await crypto.subtle.digest("SHA-256", data);
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,"0")).join("");
+    }
+    function unlock(){
+      gate.classList.add("hidden");
+      try { sessionStorage.setItem(KEY, "1"); } catch(_) {}
+    }
+    try {
+      if (sessionStorage.getItem(KEY) === "1") gate.classList.add("hidden");
+    } catch(_) {}
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      err.textContent = "";
+      const h = await sha256Hex(input.value || "");
+      if (h === GATE_HASH) { unlock(); }
+      else {
+        err.textContent = "Not quite — try again.";
+        input.value = ""; input.focus();
+      }
+    });
+  })();
+</script>
+
+<!-- ====================== NAV ====================== -->
+<header class="nav">
+  <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+    <a href="#top" class="flex items-center gap-2 group">
+      <svg viewBox="0 0 24 24" class="w-5 h-5" aria-hidden="true">
+        <defs>
+          <linearGradient id="hg" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0" stop-color="#e8a5b8"/><stop offset="1" stop-color="#d4af7a"/>
+          </linearGradient>
+        </defs>
+        <path fill="url(#hg)" d="M12 21s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 11c0 5.65-7 10-7 10z"/>
+      </svg>
+      <span class="serif text-base font-semibold">Us<span class="hero-italic text-[var(--muted)]">, in data</span></span>
+    </a>
+    <nav class="hidden md:flex items-center gap-1" aria-label="Sections">
+      <a href="#overview" data-nav="overview">Overview</a>
+      <a href="#words" data-nav="words">Words</a>
+      <a href="#timeline" data-nav="timeline">Timeline</a>
+      <a href="#extras" data-nav="extras">Extras</a>
+    </nav>
+    <div class="flex items-center gap-2">
+      <span class="chip" title="All parsing and rendering runs in your browser">
+        <svg viewBox="0 0 24 24" class="w-3.5 h-3.5" fill="currentColor" aria-hidden="true"><path d="M12 2l8 4v6c0 5-3.5 9-8 10-4.5-1-8-5-8-10V6l8-4zm-1 11l-2-2-1.4 1.4L11 15.8l5.4-5.4L15 9l-4 4z"/></svg>
+        100% Local
+      </span>
+      <button id="customizeBtn" class="btn btn-ghost" aria-haspopup="dialog" aria-controls="customizePanel" title="Customize">
+        <svg viewBox="0 0 24 24" class="w-4 h-4" fill="currentColor" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm9 4l-2.1-.5a7 7 0 0 0-.6-1.5l1.1-1.8-2.1-2.1-1.8 1.1a7 7 0 0 0-1.5-.6L13 4h-2l-.5 2.1a7 7 0 0 0-1.5.6L7.2 5.6 5.1 7.7l1.1 1.8a7 7 0 0 0-.6 1.5L3.5 11.5v2L5.6 14a7 7 0 0 0 .6 1.5l-1.1 1.8 2.1 2.1 1.8-1.1c.5.3 1 .5 1.5.6L11 21h2l.5-2.1c.5-.1 1-.3 1.5-.6l1.8 1.1 2.1-2.1-1.1-1.8c.3-.5.5-1 .6-1.5L21 13.5v-1.5z"/></svg>
+        <span class="hidden sm:inline">Customize</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+
+<!-- ====================== HERO / UPLOAD ====================== -->
+<section id="top" class="relative">
+  <div class="hearts" aria-hidden="true">
+    <svg class="h1" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 11c0 5.65-7 10-7 10z"/></svg>
+    <svg class="h2" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 11c0 5.65-7 10-7 10z"/></svg>
+    <svg class="h3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 11c0 5.65-7 10-7 10z"/></svg>
+    <svg class="h4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 11c0 5.65-7 10-7 10z"/></svg>
+    <svg class="h5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 11c0 5.65-7 10-7 10z"/></svg>
+    <svg class="h6" viewBox="0 0 24 24" fill="currentColor"><path d="M12 21s-7-4.35-7-10a4 4 0 0 1 7-2.65A4 4 0 0 1 19 11c0 5.65-7 10-7 10z"/></svg>
+  </div>
+  <div class="max-w-6xl mx-auto px-4 pt-10 pb-8 relative">
+    <p class="chip mb-4"><svg class="sparkle" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l1.5 4.5L18 8l-4.5 1.5L12 14l-1.5-4.5L6 8l4.5-1.5L12 2zm6 12l.9 2.6L21.5 17l-2.6.4L18 20l-.9-2.6L14.5 17l2.6-.4L18 14z"/></svg> A love letter, in data</p>
+    <h1 class="serif text-4xl sm:text-5xl md:text-6xl leading-tight tracking-tight">
+      Every text, <span class="hero-italic text-[var(--rose)]">every late-night</span> 🌙 reply,
+      <br class="hidden sm:block"/> mapped into something beautiful.
+    </h1>
+    <p class="mt-4 text-[var(--muted)] max-w-2xl">
+      Drop a message export — iMessage CSV, WhatsApp <code class="text-[var(--rose)]">.txt</code> or <code class="text-[var(--rose)]">.zip</code>,
+      or any generic CSV. Nothing uploads. Nothing tracked. Just the two of you, in numbers.
+    </p>
+
+    <div class="mt-7 grid md:grid-cols-[1.4fr_1fr] gap-4">
+      <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Upload message file">
+        <div class="flex items-center justify-center gap-2 mb-2">
+          <svg viewBox="0 0 24 24" class="w-5 h-5 text-[var(--rose)]" fill="currentColor" aria-hidden="true"><path d="M12 16V4m0 0l-4 4m4-4l4 4M4 20h16"/></svg>
+          <span class="text-sm text-[var(--muted)]">Drag &amp; drop a file here</span>
+        </div>
+        <div class="serif text-xl">or</div>
+        <div class="mt-3 flex flex-wrap items-center justify-center gap-2">
+          <label class="btn btn-primary cursor-pointer">
+            <svg viewBox="0 0 24 24" class="w-4 h-4" fill="currentColor" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            Browse for file
+            <input id="fileInput" type="file" class="hidden" accept=".csv,.txt,.zip,text/csv,text/plain,application/zip" />
+          </label>
+          <button id="demoBtn" class="btn">
+            <svg viewBox="0 0 24 24" class="w-4 h-4 text-[var(--gold)]" fill="currentColor" aria-hidden="true"><path d="M5 4v16l14-8L5 4z"/></svg>
+            Load Demo Data
+          </button>
+        </div>
+        <div class="mt-3 text-xs text-[var(--muted)]">
+          Supported: iMessage CSV · WhatsApp .txt / .zip · Generic CSV
+        </div>
+        <div id="fileStatus" class="mt-3 text-sm text-[var(--rose)]" aria-live="polite"></div>
+      </div>
+
+      <div class="card p-4">
+        <div class="label mb-2">Right now</div>
+        <div class="flex items-baseline gap-2">
+          <div class="serif text-3xl" id="heroCount">—</div>
+          <div class="text-sm text-[var(--muted)]">messages loaded</div>
+        </div>
+        <div class="mt-2 text-sm text-[var(--muted)]" id="heroRange">No data yet — try the demo.</div>
+        <div class="mt-4 flex items-center gap-2 text-xs">
+          <label class="inline-flex items-center gap-2 cursor-pointer">
+            <input id="saveLocal" type="checkbox" class="accent-[var(--rose)]" />
+            <span>Save locally for next visit</span>
+          </label>
+        </div>
+        <div class="mt-4">
+          <details>
+            <summary class="text-sm text-[var(--muted)] flex items-center gap-2">
+              <svg class="chev w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7 10l5 5 5-5z"/></svg>
+              How to export your messages
+            </summary>
+            <div class="mt-3 text-sm text-[var(--muted)] space-y-3" id="howTo">
+              <div>
+                <div class="text-[var(--text)] font-medium">iMessage (Mac)</div>
+                <p>Use a desktop tool — <a class="text-[var(--rose)] underline" href="https://imazing.com/" target="_blank" rel="noopener noreferrer">iMazing</a> or the
+                <a class="text-[var(--rose)] underline" href="https://github.com/ReagentX/imessage-exporter" target="_blank" rel="noopener noreferrer">imessage-exporter</a> CLI. Export the chat as CSV with columns
+                <code>date, sender, message</code>.</p>
+              </div>
+              <div>
+                <div class="text-[var(--text)] font-medium">WhatsApp</div>
+                <p>Open the chat → tap the contact → <em>Export Chat</em> → <em>Without Media</em> → save the <code>.txt</code> or <code>.zip</code>.</p>
+              </div>
+              <div>
+                <div class="text-[var(--text)] font-medium">Generic CSV</div>
+                <p>Headers anywhere — we'll detect them. Expected columns: <code>date</code>, <code>sender</code>, <code>message</code>. Example row:</p>
+                <pre class="surface-2 rounded-lg p-2 text-xs overflow-x-auto mt-1"><code>2024-03-14T21:14:00,Ryan,sweet dreams ❤️</code></pre>
+              </div>
+            </div>
+          </details>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ====================== MAIN DASHBOARD ====================== -->
+<main id="dash" class="max-w-6xl mx-auto px-4 pb-24 space-y-12">
+
+  <!-- OVERVIEW -->
+  <section id="overview" aria-labelledby="ovh">
+    <div class="flex items-end justify-between mb-4">
+      <div>
+        <p class="label">Section 01</p>
+        <h2 id="ovh" class="serif text-2xl sm:text-3xl">Overview</h2>
+      </div>
+      <span class="text-xs text-[var(--muted)]" id="overviewMeta"></span>
+    </div>
+
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+      <div class="card p-4">
+        <div class="label">Total messages</div>
+        <div class="serif text-3xl sm:text-4xl mt-1" id="kpiTotal">—</div>
+      </div>
+      <div class="card p-4">
+        <div class="label">Date range</div>
+        <div class="serif text-lg sm:text-xl mt-1" id="kpiRange">—</div>
+      </div>
+      <div class="card p-4">
+        <div class="label">Longest streak</div>
+        <div class="serif text-3xl sm:text-4xl mt-1" id="kpiStreak">—</div>
+        <div class="text-xs text-[var(--muted)] mt-1">consecutive days, both texting</div>
+      </div>
+      <div class="card p-4">
+        <div class="label">First message</div>
+        <div class="text-sm mt-1" id="kpiFirst">—</div>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-4 mt-4">
+      <div class="card p-4 lg:col-span-2">
+        <div class="flex items-center justify-between mb-1">
+          <div class="serif text-lg">Messages per month</div>
+          <div class="text-xs text-[var(--muted)]" id="monthHint"></div>
+        </div>
+        <div style="height: 280px"><canvas id="chartMonth" aria-label="Messages per month chart" role="img"></canvas></div>
+      </div>
+      <div class="card p-4">
+        <div class="serif text-lg mb-1">Who texts more</div>
+        <div style="height: 220px"><canvas id="chartShare" aria-label="Share of messages chart" role="img"></canvas></div>
+        <div id="shareLegend" class="mt-2 text-sm text-[var(--muted)] space-y-1"></div>
+      </div>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4 mt-4">
+      <div class="card p-4">
+        <div class="serif text-lg mb-2">Average reply time</div>
+        <div id="replyStats" class="space-y-2 text-sm"></div>
+        <div class="text-xs text-[var(--muted)] mt-2">Only counts replies within 24h.</div>
+      </div>
+      <div class="card p-4">
+        <div class="serif text-lg mb-2">Heat by hour</div>
+        <div style="height: 220px"><canvas id="chartHour" aria-label="Messages by hour of day" role="img"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WORDS -->
+  <section id="words" aria-labelledby="wdh">
+    <div class="flex items-end justify-between mb-4">
+      <div>
+        <p class="label">Section 02</p>
+        <h2 id="wdh" class="serif text-2xl sm:text-3xl">Words &amp; Sentiment</h2>
+      </div>
+      <div class="flex items-center gap-3 text-xs">
+        <label class="inline-flex items-center gap-2 cursor-pointer">
+          <input id="toggleStop" type="checkbox" class="accent-[var(--rose)]" checked />
+          <span>Exclude common words</span>
+        </label>
+        <label class="inline-flex items-center gap-2 cursor-pointer">
+          <input id="toggleCustom" type="checkbox" class="accent-[var(--rose)]" checked />
+          <span>Exclude custom</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-4">
+      <div class="card p-4">
+        <div class="flex items-center justify-between mb-2">
+          <div class="serif text-lg" id="wcAName">Partner A</div>
+          <span class="text-xs text-[var(--muted)]">word cloud</span>
+        </div>
+        <div class="wcwrap"><canvas id="wcA" width="400" height="260" aria-label="Word cloud for partner A" role="img"></canvas></div>
+        <div class="label mt-3">Top 20 words</div>
+        <div id="topWordsA" class="flex flex-wrap gap-1.5 mt-1"></div>
+        <div class="label mt-3">Top 10 bigrams</div>
+        <div id="topBiA" class="flex flex-wrap gap-1.5 mt-1"></div>
+      </div>
+      <div class="card p-4">
+        <div class="flex items-center justify-between mb-2">
+          <div class="serif text-lg" id="wcBName">Partner B</div>
+          <span class="text-xs text-[var(--muted)]">word cloud</span>
+        </div>
+        <div class="wcwrap"><canvas id="wcB" width="400" height="260" aria-label="Word cloud for partner B" role="img"></canvas></div>
+        <div class="label mt-3">Top 20 words</div>
+        <div id="topWordsB" class="flex flex-wrap gap-1.5 mt-1"></div>
+        <div class="label mt-3">Top 10 bigrams</div>
+        <div id="topBiB" class="flex flex-wrap gap-1.5 mt-1"></div>
+      </div>
+      <div class="card p-4">
+        <div class="flex items-center justify-between mb-2">
+          <div class="serif text-lg">Combined</div>
+          <span class="text-xs text-[var(--muted)]">word cloud</span>
+        </div>
+        <div class="wcwrap"><canvas id="wcC" width="400" height="260" aria-label="Combined word cloud" role="img"></canvas></div>
+
+        <div class="label mt-3">Top 10 emojis</div>
+        <div class="grid grid-cols-2 gap-3 mt-1">
+          <div>
+            <div class="text-xs text-[var(--muted)]" id="emA_name">A</div>
+            <div id="emA" class="flex flex-wrap gap-1.5 mt-1"></div>
+          </div>
+          <div>
+            <div class="text-xs text-[var(--muted)]" id="emB_name">B</div>
+            <div id="emB" class="flex flex-wrap gap-1.5 mt-1"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card p-4 mt-4">
+      <div class="flex items-center justify-between mb-1">
+        <div class="serif text-lg">Sentiment over time</div>
+        <div class="text-xs text-[var(--muted)]">positive − negative (lexicon-based)</div>
+      </div>
+      <div style="height: 240px"><canvas id="chartSent" aria-label="Sentiment over time chart" role="img"></canvas></div>
+    </div>
+  </section>
+
+  <!-- TIMELINE -->
+  <section id="timeline" aria-labelledby="tlh">
+    <div class="flex items-end justify-between mb-4">
+      <div>
+        <p class="label">Section 03</p>
+        <h2 id="tlh" class="serif text-2xl sm:text-3xl">Timeline &amp; Highlights</h2>
+      </div>
+      <button id="rerollBtn" class="btn">
+        <svg viewBox="0 0 24 24" class="w-4 h-4" fill="currentColor" aria-hidden="true"><path d="M12 6V3L8 7l4 4V8a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+        Re-roll Memory Lane
+      </button>
+    </div>
+
+    <div class="grid lg:grid-cols-2 gap-4">
+      <div class="card p-4">
+        <div class="serif text-lg mb-3">Highlights</div>
+        <ol id="timelineList" class="timeline"></ol>
+      </div>
+      <div class="card p-4">
+        <div class="flex items-center justify-between mb-2">
+          <div class="serif text-lg">Memory Lane</div>
+          <span class="text-xs text-[var(--muted)]" id="memMeta"></span>
+        </div>
+        <div id="memoryLane" class="space-y-2"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- EXTRAS -->
+  <section id="extras" aria-labelledby="exh">
+    <div class="flex items-end justify-between mb-4">
+      <div>
+        <p class="label">Section 04</p>
+        <h2 id="exh" class="serif text-2xl sm:text-3xl">Fun Extras</h2>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-3 gap-4">
+      <div class="card p-4 lg:col-span-2">
+        <div class="serif text-lg mb-2">Love Language Score</div>
+        <div id="loveLangWrap" class="grid sm:grid-cols-2 gap-5"></div>
+        <div class="text-xs text-[var(--muted)] mt-3">Counts of categorized phrases per person. Not a diagnosis — just a lens.</div>
+      </div>
+      <div class="card p-4">
+        <div class="serif text-lg mb-2">Nicknames</div>
+        <div id="nicknames" class="space-y-3"></div>
+      </div>
+    </div>
+
+    <div class="card p-4 mt-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="label">Just for fun 🎶</div>
+          <div class="serif text-xl mt-1" id="songTitle">—</div>
+          <div class="text-sm text-[var(--muted)]" id="songWhy"></div>
+        </div>
+        <button id="songReroll" class="btn">Re-roll</button>
+      </div>
+    </div>
+  </section>
+
+  <footer class="text-center text-xs text-[var(--muted)] pt-8">
+    Made with care, locally, in this browser tab. <span class="text-[var(--rose)]">♥</span>
+  </footer>
+</main>
+
+<!-- ====================== CUSTOMIZE PANEL ====================== -->
+<aside id="customizePanel" class="panel hidden-until" role="dialog" aria-label="Customize" aria-hidden="true">
+  <div class="flex items-center justify-between mb-2">
+    <div class="serif text-lg">Customize</div>
+    <button id="closeCustomize" class="btn btn-ghost" aria-label="Close">✕</button>
+  </div>
+  <div class="space-y-3 text-sm">
+    <div>
+      <div class="label">Partner A</div>
+      <div class="grid grid-cols-[1fr_44px] gap-2 mt-1">
+        <input id="cfgAName" class="input" placeholder="Name" />
+        <input id="cfgAColor" type="color" class="input p-1" />
+      </div>
+    </div>
+    <div>
+      <div class="label">Partner B</div>
+      <div class="grid grid-cols-[1fr_44px] gap-2 mt-1">
+        <input id="cfgBName" class="input" placeholder="Name" />
+        <input id="cfgBColor" type="color" class="input p-1" />
+      </div>
+    </div>
+    <div>
+      <div class="label">Custom nicknames (comma-separated)</div>
+      <input id="cfgNicknames" class="input mt-1" placeholder="lovebug, ry-guy" />
+    </div>
+    <div>
+      <div class="label">Inside jokes (comma-separated)</div>
+      <input id="cfgJokes" class="input mt-1" placeholder="the bird is back, code blue" />
+    </div>
+    <div>
+      <div class="label">Custom word exclusions</div>
+      <input id="cfgExclude" class="input mt-1" placeholder="lol, ok" />
+    </div>
+    <div>
+      <div class="label">Important dates</div>
+      <div id="impDates" class="space-y-2 mt-1"></div>
+      <button id="addDate" class="btn btn-ghost mt-2 text-xs">+ Add date</button>
+    </div>
+    <div class="pt-2 flex items-center justify-end gap-2">
+      <button id="applyCustomize" class="btn btn-primary">Apply</button>
+    </div>
+  </div>
+</aside>
+
+
+<script>
+// ============================================================
+// === CONFIG ===
+// ============================================================
+const CONFIG = {
+  partnerA: { name: "",  color: "#e8a5b8" },
+  partnerB: { name: "",  color: "#d4af7a" },
+  importantDates: [
+    // { date: "YYYY-MM-DD", label: "Anniversary" },
+  ],
+  customNicknames: [],   // e.g., ["lovebug", "ry-guy"]
+  insideJokes: [],       // phrases flagged with a star on the timeline
+  customExclusions: [],  // words removed from word analysis
+};
+
+const PALETTE = {
+  bg: "#0f0a14", surface: "#1a1220", surface2: "#241829",
+  rose: "#e8a5b8", gold: "#d4af7a", plum: "#9a6a8a",
+  text: "#f5ebe8", muted: "#9b8a92", success: "#a8d4a8",
+  grid: "rgba(255,255,255,0.08)"
+};
+
+// English stopwords (compact list)
+const STOPWORDS = new Set(`
+a about above after again against all am an and any are aren't as at be because been before being below
+between both but by can can't cannot could couldn't did didn't do does doesn't doing don't down during
+each few for from further had hadn't has hasn't have haven't having he he'd he'll he's her here here's
+hers herself him himself his how how's i i'd i'll i'm i've if in into is isn't it it's its itself let's
+me more most mustn't my myself no nor not of off on once only or other ought our ours ourselves out over
+own same shan't she she'd she'll she's should shouldn't so some such than that that's the their theirs
+them themselves then there there's these they they'd they'll they're they've this those through to too
+under until up very was wasn't we we'd we'll we're we've were weren't what what's when when's where
+where's which while who who's whom why why's with won't would wouldn't you you'd you'll you're you've
+your yours yourself yourselves yeah yep nope ok okay just like u r ur im youre ill ive dont didnt cant
+got get gonna wanna hey hi hello bye lol haha hahaha lmao omg yes no n y k thanks thx pls please oh ah
+yea ya nah uh um hmm well actually really also still even still ya'll yall there's there's would'a
+`.trim().split(/\s+/));
+
+// Sentiment lexicon (lightweight — tuned for SMS tone, not formal text)
+const POS_WORDS = new Set([
+  "love","loved","loving","loves","adore","amazing","awesome","beautiful","best","bliss","cute","cuddle",
+  "dream","excited","fantastic","fav","favorite","fun","funny","glad","good","gorgeous","grateful","great",
+  "happy","heart","hug","incredible","kind","kiss","kisses","laugh","laughing","lovely","luck","lucky",
+  "miss","missyou","nice","perfect","precious","pretty","proud","romantic","safe","smile","smiles","sunshine",
+  "sweet","sweetheart","thanks","thank","thrilled","wonderful","xo","xoxo","yes","yummy","baby","babe",
+  "honey","muah","mwah","❤️","❤","💕","💖","💗","💘","💞","💓","💝","😍","🥰","😘","🤗","🥺","☀️","🌙"
+]);
+const NEG_WORDS = new Set([
+  "angry","annoyed","awful","bad","boring","broken","cried","crying","disappointed","dread","dreadful",
+  "fail","failure","fight","frustrated","hate","hated","hates","horrible","hurt","hurts","kill","lonely",
+  "lost","mad","mess","miserable","never","no","panic","pissed","sad","scared","sick","sorry","stupid",
+  "stress","stressed","suck","sucks","terrible","tired","ugh","unhappy","upset","worried","worst","yuck",
+  "ugly","damn","fuck","shit","wtf","argh","😡","😠","😢","😭","😞","😔","💔","😩","😣"
+]);
+
+// Built-in nicknames
+const BUILTIN_NICKS = [
+  "babe","baby","love","honey","sweetie","dear","hun","darling","beautiful","handsome","sweetheart",
+  "boo","bb","my love","my heart","sunshine","cutie","angel"
+];
+
+// Love language phrase patterns (lowercased)
+const LL_PATTERNS = {
+  "Words of Affirmation": [
+    "love you","i love","proud of you","you're amazing","youre amazing","you are amazing","you're the best",
+    "miss you","thinking of you","you're beautiful","youre beautiful","you're so","appreciate you","mean it"
+  ],
+  "Quality Time": [
+    "let's hang","lets hang","want to","wanna","tonight","this weekend","date night","see you","meet up",
+    "come over","hang out","spend time","with you","together","movie","dinner"
+  ],
+  "Acts of Service": [
+    "i'll grab","ill grab","i got you","got you","i'll handle","ill handle","i'll take care","ill take care",
+    "i'll pick up","ill pick up","i made","i cleaned","i'll bring","ill bring","i'll get","ill get"
+  ],
+  "Gifts": [
+    "got you a","i got you a","ordered you","brought you","present for you","surprise for you","sent you",
+    "package","flowers","gift"
+  ],
+  "Physical Touch": [
+    "hug","hugs","kiss","kisses","cuddle","cuddles","snuggle","hold you","squeeze","forehead kiss",
+    "hand holding","make out","by your side"
+  ]
+};
+
+// Song bank (built-in, no external calls)
+const SONG_BANK = {
+  loving:    ["All of Me — John Legend","Thinking Out Loud — Ed Sheeran","At Last — Etta James","La Vie en Rose — Édith Piaf"],
+  playful:   ["Best Day of My Life — American Authors","Walking on Sunshine — Katrina & the Waves","Crazy in Love — Beyoncé","I Wanna Dance With Somebody — Whitney Houston"],
+  adventurous:["Adventure of a Lifetime — Coldplay","On Top of the World — Imagine Dragons","Send Me on My Way — Rusted Root","Float On — Modest Mouse"]
+};
+
+// State
+let STATE = {
+  raw: [],         // raw rows {date, sender, message}
+  senders: [],     // chosen [A,B] (display names)
+  byPerson: {},    // sender => array
+  analysis: null,  // memoized analysis
+  charts: {},      // chart instances
+};
+
+
+// ============================================================
+// === DEMO ===  ~500 messages over 18 months
+// ============================================================
+const DEMO_MESSAGES = (function buildDemo(){
+  const A = "Sam", B = "Alex";
+  const start = new Date("2024-01-08T08:14:00");
+  const out = [];
+  // pools of varied messages
+  const morning = [
+    [A,"morning ☀️ how'd you sleep?"], [B,"like a rock 🥺 you?"],
+    [A,"on my way ☕"], [B,"coffee in hand 🙏"],
+    [A,"thinking about you already 🥺"], [B,"stop you're making me smile in a meeting"]
+  ];
+  const day = [
+    [A,"what do you want for dinner?"], [B,"pasta?? 🍝"], [A,"say less, picking up wine"],
+    [B,"the bird is back 🐦"], [A,"again??? 😂 send pic"],
+    [A,"running late, sorry"], [B,"all good, take your time ❤️"],
+    [B,"can you grab paper towels"], [A,"i got you"],
+    [A,"code blue 🚨 the cat is on the counter again"], [B,"😂 send video"],
+    [A,"missed you today"], [B,"miss you more 💕"],
+    [B,"hugeee day at work today"], [A,"so proud of you. seriously"],
+    [A,"want to hike Saturday?"], [B,"yes please 🌲"]
+  ];
+  const evening = [
+    [A,"home 🏠"], [B,"yayyy"],
+    [A,"i love you"], [B,"love you more"], [A,"impossible"],
+    [B,"movie tonight?"], [A,"only if i can pick"], [B,"deal 🍿"],
+    [A,"sweet dreams 🌙"], [B,"goodnight my love"],
+    [B,"thank you for today 🥺"], [A,"thank you for being you"]
+  ];
+  const longishA = "okay so i was thinking about that trip we keep talking about — what if we actually picked a weekend in october and just went. nothing fancy, just us, a cabin, no phones for 48 hours. you in?";
+  const longishB = "i love that idea. let me check my calendar tonight but i'm 90% yes. also can we bring the french press this time so we don't suffer through bad motel coffee again 😅";
+
+  // generate days
+  const dayMs = 24*60*60*1000;
+  // 18 months ≈ 540 days, ~500 messages
+  for (let d = 0; d < 540; d++) {
+    // some days quiet, some chatty
+    const day0 = new Date(start.getTime() + d*dayMs);
+    const isWeekend = day0.getDay()===0 || day0.getDay()===6;
+    const chatty = Math.random() < (isWeekend ? 0.55 : 0.42);
+    if (!chatty && d % 3 !== 0) continue;
+
+    const slots = [];
+    // morning
+    if (Math.random() < 0.7) slots.push({hr: 7+Math.floor(Math.random()*3), pool: morning});
+    // day
+    if (Math.random() < 0.85) {
+      const reps = chatty ? 2 + Math.floor(Math.random()*3) : 1;
+      for (let i=0;i<reps;i++) slots.push({hr: 11+Math.floor(Math.random()*7), pool: day});
+    }
+    // evening
+    if (Math.random() < 0.65) slots.push({hr: 19+Math.floor(Math.random()*3), pool: evening});
+
+    for (const s of slots) {
+      const [sender, msg] = s.pool[Math.floor(Math.random()*s.pool.length)];
+      const ts = new Date(day0.getTime());
+      ts.setHours(s.hr, Math.floor(Math.random()*60), Math.floor(Math.random()*60));
+      out.push({ date: ts, sender, message: msg });
+      // sometimes a quick reply
+      if (Math.random() < 0.55) {
+        const reply = s.pool[Math.floor(Math.random()*s.pool.length)];
+        const r = new Date(ts.getTime() + (1+Math.floor(Math.random()*40))*60000);
+        out.push({ date: r, sender: reply[0]===sender ? (sender===A?B:A) : reply[0], message: reply[1] });
+      }
+    }
+
+    // occasional long message
+    if (Math.random() < 0.03) {
+      const ts = new Date(day0.getTime()); ts.setHours(20, 5, 0);
+      out.push({ date: ts, sender: A, message: longishA });
+      const ts2 = new Date(ts.getTime()+ 17*60000);
+      out.push({ date: ts2, sender: B, message: longishB });
+    }
+  }
+  // ensure first "i love you" exists early-ish
+  const t = new Date(start.getTime() + 12*dayMs); t.setHours(22,11,0);
+  out.push({ date: t, sender: A, message: "i love you" });
+  out.sort((a,b) => a.date - b.date);
+  return out.slice(0, 540); // cap
+})();
+
+
+// ============================================================
+// === PARSERS ===
+// ============================================================
+
+// Normalize sender labels (trim, collapse whitespace)
+function normSender(s){ return String(s||"").trim().replace(/\s+/g," "); }
+
+// System-message phrases to strip (case-insensitive contains)
+const SYSTEM_SUBSTRINGS = [
+  "messages and calls are end-to-end encrypted",
+  "you changed the group",
+  "you created group",
+  "you added", "you removed",
+  "missed voice call","missed video call",
+  "this message was deleted","<media omitted>","image omitted","video omitted",
+  "joined using this group's invite link","changed the subject",
+  "changed this group's icon","security code changed"
+];
+function isSystemMessage(text){
+  if (!text) return true;
+  const t = String(text).toLowerCase();
+  return SYSTEM_SUBSTRINGS.some(s => t.includes(s));
+}
+
+// Parse WhatsApp .txt — handles iOS [12/3/24, 9:14:22 PM] Name: msg
+// and Android 12/3/24, 9:14 PM - Name: msg
+// Continuation lines are appended to the prior message.
+function parseWhatsApp(text){
+  const lines = text.split(/\r?\n/);
+  const out = [];
+  // [DD/MM/YY, HH:MM[:SS] AM/PM] Sender: message      (iOS, bracketed)
+  const re1 = /^\[(\d{1,2})\/(\d{1,2})\/(\d{2,4}),\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?\]\s*([^:]+?):\s?(.*)$/i;
+  // DD/MM/YY, HH:MM - Sender: message                 (Android, dashed)
+  const re2 = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4}),\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?\s+-\s+([^:]+?):\s?(.*)$/i;
+  // Try to detect MDY vs DMY by scanning the file: if any first-number > 12, it's DMY; else assume MDY.
+  let dmy = false;
+  for (const ln of lines.slice(0, 500)) {
+    const m = ln.match(re1) || ln.match(re2);
+    if (m) {
+      const a = +m[1], b = +m[2];
+      if (a > 12) { dmy = true; break; }
+      if (b > 12) { dmy = false; break; }
+    }
+  }
+  let cur = null;
+  for (const raw of lines) {
+    const line = raw.replace(/^\u200e+/, "").trim();
+    let m = line.match(re1) || line.match(re2);
+    if (m) {
+      const p1 = +m[1], p2 = +m[2], y = +m[3];
+      const month = dmy ? p2 : p1;
+      const day   = dmy ? p1 : p2;
+      let hour = +m[4]; const min = +m[5]; const sec = m[6] ? +m[6] : 0;
+      const ampm = m[7] ? m[7].toUpperCase() : null;
+      if (ampm === "PM" && hour < 12) hour += 12;
+      if (ampm === "AM" && hour === 12) hour = 0;
+      const year = y < 100 ? 2000 + y : y;
+      const sender = normSender(m[8]);
+      const msg = m[9] || "";
+      if (cur) out.push(cur);
+      cur = { date: new Date(year, month-1, day, hour, min, sec), sender, message: msg };
+    } else if (cur && line) {
+      cur.message += "\n" + line;
+    }
+  }
+  if (cur) out.push(cur);
+  return out
+    .filter(r => r.date && !isNaN(r.date) && !isSystemMessage(r.message))
+    .map(r => ({ date: r.date, sender: r.sender, message: r.message.trim() }));
+}
+
+// Parse generic CSV with PapaParse + column mapping heuristics
+function parseCSV(text){
+  const res = Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: false });
+  if (!res.data || !res.data.length) return { rows: [], ambiguous: true, headers: [] };
+  const headers = res.meta.fields || Object.keys(res.data[0] || {});
+  const find = (cands) => headers.find(h => cands.includes(h.toLowerCase().trim()));
+  const dateCol    = find(["date","timestamp","time","sent","sent_at","datetime","message_date","readabledate"]);
+  const senderCol  = find(["sender","from","name","author","is_from_me","who","direction"]);
+  const messageCol = find(["message","text","body","content","msg"]);
+  if (dateCol && senderCol && messageCol) {
+    const rows = res.data.map(r => {
+      let s = r[senderCol];
+      // iMessage exporter sometimes uses is_from_me (0/1)
+      if (senderCol.toLowerCase() === "is_from_me") s = (String(s)==="1"||s===true) ? "Me" : "Them";
+      const d = parseFlexibleDate(r[dateCol]);
+      return d ? { date: d, sender: normSender(s), message: String(r[messageCol] ?? "") } : null;
+    }).filter(Boolean).filter(r => !isSystemMessage(r.message));
+    return { rows, ambiguous: false, headers };
+  }
+  return { rows: [], ambiguous: true, headers, raw: res.data };
+}
+
+// Flexible date parsing for common CSV formats
+function parseFlexibleDate(v){
+  if (!v && v !== 0) return null;
+  if (v instanceof Date) return v;
+  const s = String(v).trim();
+  // ISO-ish
+  let d = new Date(s);
+  if (!isNaN(d)) return d;
+  // mm/dd/yyyy hh:mm
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s*(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+  if (m) {
+    let hour = +m[4]; const ampm = m[7] ? m[7].toUpperCase() : null;
+    if (ampm === "PM" && hour < 12) hour += 12;
+    if (ampm === "AM" && hour === 12) hour = 0;
+    const year = +m[3] < 100 ? 2000 + +m[3] : +m[3];
+    d = new Date(year, +m[1]-1, +m[2], hour, +m[5], m[6]?+m[6]:0);
+    if (!isNaN(d)) return d;
+  }
+  // unix seconds/ms
+  if (/^\d{10}$/.test(s)) return new Date(+s * 1000);
+  if (/^\d{13}$/.test(s)) return new Date(+s);
+  return null;
+}
+
+// Read a File (text/zip) and dispatch to the right parser
+async function ingestFile(file){
+  const name = (file.name || "").toLowerCase();
+  if (name.endsWith(".zip")) {
+    const zip = await JSZip.loadAsync(file);
+    const txt = Object.values(zip.files).find(f => f.name.toLowerCase().endsWith(".txt"));
+    if (!txt) throw new Error("No .txt found inside zip");
+    const t = await txt.async("string");
+    return parseWhatsApp(t);
+  }
+  const text = await file.text();
+  if (name.endsWith(".csv")) {
+    const r = parseCSV(text);
+    if (r.ambiguous) throw new Error("Could not auto-detect CSV columns. Required: date, sender, message.");
+    return r.rows;
+  }
+  if (name.endsWith(".txt")) return parseWhatsApp(text);
+  // Fallback: try CSV, then WhatsApp
+  const r = parseCSV(text);
+  if (!r.ambiguous && r.rows.length) return r.rows;
+  return parseWhatsApp(text);
+}
+
+// Choose the two senders. If more than 2, pick the top 2 by count.
+function pickTwoSenders(rows){
+  const counts = {};
+  for (const r of rows) counts[r.sender] = (counts[r.sender]||0)+1;
+  const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  if (!sorted.length) return [];
+  if (sorted.length === 1) return [sorted[0][0]];
+  return [sorted[0][0], sorted[1][0]];
+}
+
+
+// ============================================================
+// === ANALYSIS ===
+// ============================================================
+
+// Strip emojis from a string into a separate array
+const EMOJI_RE = /(\p{Extended_Pictographic}(?:\uFE0F)?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F)?)*)/gu;
+
+function tokenize(text){
+  if (!text) return [];
+  const noEmoji = text.replace(EMOJI_RE, " ");
+  return noEmoji.toLowerCase()
+    .replace(/[^a-z'\s]/g, " ")
+    .split(/\s+/)
+    .filter(w => w && w.length >= 2);
+}
+
+function extractEmojis(text){
+  if (!text) return [];
+  const out = [];
+  const m = text.match(EMOJI_RE);
+  if (m) for (const e of m) out.push(e);
+  return out;
+}
+
+function dayKey(d){ const x = new Date(d); x.setHours(0,0,0,0); return x.getTime(); }
+function monthKey(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`; }
+function hourKey(d){ return d.getHours(); }
+
+function analyze(rows, senders, opts){
+  opts = opts || {};
+  const stop = opts.useStop !== false;
+  const customEx = (opts.useCustom !== false && CONFIG.customExclusions.length)
+    ? new Set(CONFIG.customExclusions.map(s=>s.toLowerCase())) : new Set();
+  const [A, B] = senders;
+  const byPerson = { [A]: [], [B]: [] };
+  for (const r of rows) {
+    if (r.sender === A || r.sender === B) byPerson[r.sender].push(r);
+  }
+
+  const total = byPerson[A].length + byPerson[B].length;
+  const first = rows.find(r => r.sender === A || r.sender === B);
+  const lastRow = [...rows].reverse().find(r => r.sender === A || r.sender === B);
+  const dateRange = first && lastRow ? [first.date, lastRow.date] : null;
+
+  // Messages per month
+  const months = {};
+  for (const r of rows) {
+    if (r.sender !== A && r.sender !== B) continue;
+    const k = monthKey(r.date);
+    months[k] = months[k] || { [A]:0, [B]:0 };
+    months[k][r.sender] += 1;
+  }
+  const monthKeys = Object.keys(months).sort();
+
+  // Hour-of-day distribution
+  const hours = { [A]: Array(24).fill(0), [B]: Array(24).fill(0) };
+  for (const r of rows) {
+    if (r.sender !== A && r.sender !== B) continue;
+    hours[r.sender][r.date.getHours()] += 1;
+  }
+
+  // Reply times (within 24h)
+  const replies = { [A]: [], [B]: [] };
+  for (let i = 1; i < rows.length; i++) {
+    const prev = rows[i-1], cur = rows[i];
+    if (!(cur.sender===A||cur.sender===B) || !(prev.sender===A||prev.sender===B)) continue;
+    if (prev.sender === cur.sender) continue;
+    const diffMin = (cur.date - prev.date) / 60000;
+    if (diffMin > 0 && diffMin <= 24*60) replies[cur.sender].push(diffMin);
+  }
+  const median = arr => {
+    if (!arr.length) return null;
+    const s = [...arr].sort((a,b)=>a-b);
+    const mid = Math.floor(s.length/2);
+    return s.length % 2 ? s[mid] : (s[mid-1]+s[mid])/2;
+  };
+  const avg = arr => arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : null;
+  const replyStats = {
+    [A]: { mean: avg(replies[A]), median: median(replies[A]), n: replies[A].length },
+    [B]: { mean: avg(replies[B]), median: median(replies[B]), n: replies[B].length }
+  };
+
+  // Longest streak — consecutive days where BOTH partners sent ≥1
+  const daySet = {};
+  for (const r of rows) {
+    if (r.sender !== A && r.sender !== B) continue;
+    const k = dayKey(r.date);
+    daySet[k] = daySet[k] || new Set();
+    daySet[k].add(r.sender);
+  }
+  const days = Object.keys(daySet).map(Number).sort((a,b)=>a-b);
+  let best = 0, run = 0, prev = null, bestStart = null, runStart = null;
+  for (const d of days) {
+    const both = daySet[d].size >= 2;
+    if (both) {
+      if (prev !== null && d - prev === 86400000) run += 1;
+      else { run = 1; runStart = d; }
+      if (run > best) { best = run; bestStart = runStart; }
+      prev = d;
+    } else {
+      run = 0; prev = null;
+    }
+  }
+
+  // Word frequencies + bigrams per sender
+  const wcA = new Map(), wcB = new Map();
+  const biA = new Map(), biB = new Map();
+  const emA = new Map(), emB = new Map();
+  function bumpMap(m, key){ m.set(key, (m.get(key)||0)+1); }
+
+  for (const r of rows) {
+    const target = r.sender === A ? wcA : (r.sender === B ? wcB : null);
+    const biTarget = r.sender === A ? biA : (r.sender === B ? biB : null);
+    const emTarget = r.sender === A ? emA : (r.sender === B ? emB : null);
+    if (!target) continue;
+    const toks = tokenize(r.message);
+    let prevT = null;
+    for (const t of toks) {
+      if (stop && STOPWORDS.has(t)) { prevT = null; continue; }
+      if (customEx.has(t)) { prevT = null; continue; }
+      bumpMap(target, t);
+      if (prevT) bumpMap(biTarget, prevT + " " + t);
+      prevT = t;
+    }
+    for (const e of extractEmojis(r.message)) bumpMap(emTarget, e);
+  }
+  const topN = (m, n) => [...m.entries()].sort((a,b)=>b[1]-a[1]).slice(0, n);
+
+  // Sentiment by month
+  const sentMonths = {};
+  for (const r of rows) {
+    if (r.sender !== A && r.sender !== B) continue;
+    const k = monthKey(r.date);
+    sentMonths[k] = sentMonths[k] || { pos: 0, neg: 0, total: 0 };
+    const txt = r.message.toLowerCase();
+    const toks = tokenize(r.message);
+    let p = 0, n = 0;
+    for (const t of toks) {
+      if (POS_WORDS.has(t)) p++;
+      if (NEG_WORDS.has(t)) n++;
+    }
+    // Emojis count too
+    for (const e of extractEmojis(r.message)) {
+      if (POS_WORDS.has(e)) p++;
+      if (NEG_WORDS.has(e)) n++;
+    }
+    sentMonths[k].pos += p; sentMonths[k].neg += n; sentMonths[k].total += 1;
+  }
+
+  // Love language scores
+  const ll = {};
+  ll[A] = {}; ll[B] = {};
+  for (const cat of Object.keys(LL_PATTERNS)) { ll[A][cat]=0; ll[B][cat]=0; }
+  for (const r of rows) {
+    if (r.sender !== A && r.sender !== B) continue;
+    const t = r.message.toLowerCase();
+    for (const [cat, patterns] of Object.entries(LL_PATTERNS)) {
+      for (const p of patterns) if (t.includes(p)) { ll[r.sender][cat] += 1; break; }
+    }
+  }
+
+  // Nicknames (built-in + custom)
+  const nickList = [...new Set([...BUILTIN_NICKS, ...CONFIG.customNicknames].map(s=>s.toLowerCase()))];
+  const nickCounts = { [A]: {}, [B]: {} };
+  for (const r of rows) {
+    if (r.sender !== A && r.sender !== B) continue;
+    const t = " " + r.message.toLowerCase() + " ";
+    for (const n of nickList) {
+      const re = new RegExp("(^|[^a-z])" + n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "($|[^a-z])", "g");
+      const m = t.match(re);
+      if (m) nickCounts[r.sender][n] = (nickCounts[r.sender][n] || 0) + m.length;
+    }
+  }
+  const topNicks = s => Object.entries(nickCounts[s]).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  // Day with most messages
+  const dayCounts = {};
+  for (const r of rows) {
+    if (r.sender !== A && r.sender !== B) continue;
+    const k = dayKey(r.date);
+    dayCounts[k] = (dayCounts[k]||0) + 1;
+  }
+  let bigDay = null, bigDayN = 0;
+  for (const [k,v] of Object.entries(dayCounts)) if (v > bigDayN) { bigDayN = v; bigDay = +k; }
+
+  // Longest message
+  let longest = null;
+  for (const r of rows) {
+    if (r.sender !== A && r.sender !== B) continue;
+    if (!longest || r.message.length > longest.message.length) longest = r;
+  }
+
+  // First "I love you"
+  const iLoveYou = rows.find(r => (r.sender===A||r.sender===B) && /\bi\s+love\s+you\b/i.test(r.message));
+
+  // Inside joke hits
+  const insideHits = [];
+  for (const phrase of CONFIG.insideJokes) {
+    if (!phrase) continue;
+    const re = new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
+    const hit = rows.find(r => re.test(r.message) && (r.sender===A||r.sender===B));
+    if (hit) insideHits.push({ phrase, row: hit });
+  }
+
+  // Dominant theme for the song
+  const totals = { loving: 0, playful: 0, adventurous: 0 };
+  for (const r of rows) {
+    if (r.sender !== A && r.sender !== B) continue;
+    const t = r.message.toLowerCase();
+    if (/\b(love|miss|heart|kiss|hug|cuddle)\b/.test(t)) totals.loving++;
+    if (/\b(haha|lol|lmao|silly|joke|funny|😂|🤣)\b/i.test(r.message)) totals.playful++;
+    if (/\b(hike|trip|travel|adventure|weekend|cabin|road)\b/.test(t)) totals.adventurous++;
+  }
+  const themeOrdered = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
+  const theme = themeOrdered[0]?.[0] || "loving";
+
+  return {
+    total, dateRange, byPerson,
+    months, monthKeys,
+    hours,
+    replyStats,
+    streak: { length: best, start: bestStart },
+    first,
+    words: { [A]: topN(wcA, 20), [B]: topN(wcB, 20), _fullA: wcA, _fullB: wcB },
+    bigrams: { [A]: topN(biA, 10), [B]: topN(biB, 10) },
+    emojis:  { [A]: topN(emA, 10), [B]: topN(emB, 10) },
+    sentMonths,
+    ll,
+    nicknames: { [A]: topNicks(A), [B]: topNicks(B) },
+    bigDay: bigDay ? { date: new Date(bigDay), count: bigDayN } : null,
+    longest,
+    iLoveYou,
+    insideHits,
+    theme
+  };
+}
+
+// Pick a random burst of messages around the densest days, for Memory Lane
+function memoryLane(rows, senders, n){
+  const [A, B] = senders;
+  const filtered = rows.filter(r => r.sender===A || r.sender===B);
+  if (filtered.length === 0) return [];
+  // Weight by daily count
+  const counts = {};
+  for (const r of filtered) {
+    const k = dayKey(r.date);
+    counts[k] = (counts[k]||0)+1;
+  }
+  const weighted = Object.entries(counts).flatMap(([k,c]) => Array(Math.min(c, 12)).fill(+k));
+  const pickDay = weighted[Math.floor(Math.random()*weighted.length)];
+  const dayMsgs = filtered.filter(r => dayKey(r.date) === pickDay);
+  if (dayMsgs.length <= n) return dayMsgs;
+  const start = Math.floor(Math.random() * (dayMsgs.length - n));
+  return dayMsgs.slice(start, start + n);
+}
+
+
+// ============================================================
+// === RENDERING ===
+// ============================================================
+const $ = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+
+function fmtDate(d){
+  if (!d) return "—";
+  return d.toLocaleDateString(undefined, { year:"numeric", month:"short", day:"numeric" });
+}
+function fmtDateTime(d){
+  if (!d) return "—";
+  return d.toLocaleString(undefined, { year:"numeric", month:"short", day:"numeric", hour:"numeric", minute:"2-digit" });
+}
+function fmtMinutes(m){
+  if (m == null) return "—";
+  if (m < 1) return `${Math.round(m*60)}s`;
+  if (m < 90) return `${m.toFixed(1)} min`;
+  const h = m/60;
+  if (h < 24) return `${h.toFixed(1)} h`;
+  return `${(h/24).toFixed(1)} d`;
+}
+function escapeHTML(s){
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+// Default Chart.js styling
+function setChartDefaults(){
+  if (!window.Chart) return;
+  Chart.defaults.color = PALETTE.muted;
+  Chart.defaults.borderColor = PALETTE.grid;
+  Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+  Chart.defaults.font.size = 11;
+}
+
+function destroyChart(key){
+  if (STATE.charts[key]) { STATE.charts[key].destroy(); delete STATE.charts[key]; }
+}
+
+function renderOverview(a){
+  const [A, B] = STATE.senders;
+  const colA = CONFIG.partnerA.color, colB = CONFIG.partnerB.color;
+
+  $("#kpiTotal").textContent = a.total.toLocaleString();
+  $("#heroCount").textContent = a.total.toLocaleString();
+  if (a.dateRange) {
+    const [s,e] = a.dateRange;
+    const txt = `${fmtDate(s)} → ${fmtDate(e)}`;
+    $("#kpiRange").textContent = txt;
+    $("#heroRange").textContent = `${A} & ${B} · ${txt}`;
+  }
+  $("#overviewMeta").textContent = `${A} & ${B}`;
+  $("#kpiStreak").textContent = a.streak.length > 0 ? `${a.streak.length}d` : "—";
+  $("#kpiFirst").innerHTML = a.first
+    ? `<span class="text-[var(--rose)] serif">"${escapeHTML(a.first.message.slice(0,80))}${a.first.message.length>80?"…":""}"</span><div class="text-xs text-[var(--muted)] mt-1">— ${escapeHTML(a.first.sender)}, ${fmtDate(a.first.date)}</div>`
+    : "—";
+
+  // Messages per month line chart
+  destroyChart("month");
+  const labels = a.monthKeys;
+  const datasetA = labels.map(k => a.months[k][A] || 0);
+  const datasetB = labels.map(k => a.months[k][B] || 0);
+  STATE.charts.month = new Chart($("#chartMonth"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label: A, data: datasetA, borderColor: colA, backgroundColor: colA + "33", tension: 0.35, pointRadius: 2, fill: true },
+        { label: B, data: datasetB, borderColor: colB, backgroundColor: colB + "33", tension: 0.35, pointRadius: 2, fill: true }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: "bottom", labels: { color: PALETTE.muted } } },
+      scales: {
+        x: { grid: { color: PALETTE.grid }, ticks: { color: PALETTE.muted, maxRotation: 0, autoSkip: true } },
+        y: { grid: { color: PALETTE.grid }, ticks: { color: PALETTE.muted }, beginAtZero: true }
+      }
+    }
+  });
+  const peakIdx = datasetA.map((v,i)=>v+datasetB[i]).reduce((m,v,i,arr)=>v>arr[m]?i:m,0);
+  $("#monthHint").textContent = labels[peakIdx] ? `Peak: ${labels[peakIdx]}` : "";
+
+  // Donut chart
+  destroyChart("share");
+  const aCount = a.byPerson[A].length, bCount = a.byPerson[B].length;
+  STATE.charts.share = new Chart($("#chartShare"), {
+    type: "doughnut",
+    data: {
+      labels: [A, B],
+      datasets: [{ data: [aCount, bCount], backgroundColor: [colA, colB], borderColor: "rgba(0,0,0,0)", borderWidth: 2 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, cutout: "62%",
+      plugins: { legend: { display: false } }
+    }
+  });
+  const totalAB = aCount + bCount;
+  const pct = n => totalAB ? Math.round((n / totalAB) * 100) : 0;
+  $("#shareLegend").innerHTML = `
+    <div class="flex items-center justify-between"><span><span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${colA};margin-right:6px"></span>${escapeHTML(A)}</span><span class="text-[var(--text)]">${aCount.toLocaleString()} <span class="text-[var(--muted)]">· ${pct(aCount)}%</span></span></div>
+    <div class="flex items-center justify-between"><span><span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${colB};margin-right:6px"></span>${escapeHTML(B)}</span><span class="text-[var(--text)]">${bCount.toLocaleString()} <span class="text-[var(--muted)]">· ${pct(bCount)}%</span></span></div>
+  `;
+
+  // Reply stats
+  $("#replyStats").innerHTML = [A,B].map(s => {
+    const r = a.replyStats[s];
+    return `<div class="flex items-center justify-between"><span><span style="display:inline-block;width:8px;height:8px;border-radius:999px;background:${s===A?colA:colB};margin-right:6px"></span>${escapeHTML(s)}</span>
+      <span><span class="text-[var(--text)]">${fmtMinutes(r.median)}</span> <span class="text-xs text-[var(--muted)]">median · avg ${fmtMinutes(r.mean)}</span></span></div>`;
+  }).join("");
+
+  // Hour chart
+  destroyChart("hour");
+  const hourLabels = Array.from({length:24}, (_,i)=> (i%6===0 ? `${i}:00` : ""));
+  STATE.charts.hour = new Chart($("#chartHour"), {
+    type: "bar",
+    data: {
+      labels: hourLabels,
+      datasets: [
+        { label: A, data: a.hours[A], backgroundColor: colA + "cc", stack: "s" },
+        { label: B, data: a.hours[B], backgroundColor: colB + "cc", stack: "s" }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: "bottom", labels: { color: PALETTE.muted } } },
+      scales: {
+        x: { stacked: true, grid: { display: false }, ticks: { color: PALETTE.muted } },
+        y: { stacked: true, grid: { color: PALETTE.grid }, ticks: { color: PALETTE.muted }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+function renderWords(a){
+  const [A, B] = STATE.senders;
+  $("#wcAName").textContent = A;
+  $("#wcBName").textContent = B;
+  $("#emA_name").textContent = A;
+  $("#emB_name").textContent = B;
+
+  // Render top-words pills
+  const pill = (w, n, max, color) => {
+    const scale = max ? (0.7 + 0.5 * (n / max)) : 1;
+    return `<span class="chip" style="background:${color}1a;border-color:${color}55;color:${color};font-size:${Math.min(14, 11*scale).toFixed(0)}px">${escapeHTML(w)} <span class="text-[var(--muted)] font-normal">${n}</span></span>`;
+  };
+  const renderList = (sel, list, color) => {
+    const max = list[0]?.[1] || 1;
+    $(sel).innerHTML = list.map(([w,n]) => pill(w,n,max,color)).join("");
+  };
+  renderList("#topWordsA", a.words[A], CONFIG.partnerA.color);
+  renderList("#topWordsB", a.words[B], CONFIG.partnerB.color);
+  renderList("#topBiA", a.bigrams[A], CONFIG.partnerA.color);
+  renderList("#topBiB", a.bigrams[B], CONFIG.partnerB.color);
+
+  // Emojis
+  const renderEmoji = (sel, list) => {
+    $(sel).innerHTML = list.length
+      ? list.map(([e,n]) => `<span class="chip" style="background:rgba(255,255,255,0.05);border-color:var(--border);color:var(--text);font-size:14px"><span style="font-size:18px;line-height:1">${e}</span> <span class="text-[var(--muted)]">${n}</span></span>`).join("")
+      : '<span class="text-xs text-[var(--muted)]">no emojis found</span>';
+  };
+  renderEmoji("#emA", a.emojis[A]);
+  renderEmoji("#emB", a.emojis[B]);
+
+  // Word clouds (via wordcloud2.js)
+  const wcOptsBase = {
+    gridSize: 6, weightFactor: function(size){ return Math.max(10, Math.min(36, size * 4)); },
+    fontFamily: "Fraunces, Inter, sans-serif",
+    backgroundColor: "transparent", rotateRatio: 0.15,
+    shrinkToFit: true, drawOutOfBound: false
+  };
+  const renderCloud = (canvasId, words, color) => {
+    const canvas = $(canvasId);
+    if (!canvas || !window.WordCloud) return;
+    // resize canvas to displayed width
+    const w = canvas.parentElement.clientWidth || 400;
+    canvas.width = w; canvas.height = 260;
+    const list = words.slice(0, 60).map(([w,n]) => [w, n]);
+    if (!list.length) {
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle = PALETTE.muted; ctx.font = "14px Inter"; ctx.textAlign = "center";
+      ctx.fillText("Not enough words yet", canvas.width/2, canvas.height/2);
+      return;
+    }
+    try {
+      WordCloud(canvas, {
+        ...wcOptsBase,
+        list,
+        color: typeof color === "function" ? color : function(){ return color; }
+      });
+    } catch (e) {
+      console.warn("WordCloud failed", e);
+    }
+  };
+  const fullA = [...a.words._fullA.entries()].sort((a,b)=>b[1]-a[1]);
+  const fullB = [...a.words._fullB.entries()].sort((a,b)=>b[1]-a[1]);
+  renderCloud("#wcA", fullA, CONFIG.partnerA.color);
+  renderCloud("#wcB", fullB, CONFIG.partnerB.color);
+  // Combined: merge maps
+  const combined = new Map(fullA);
+  for (const [k,v] of fullB) combined.set(k, (combined.get(k)||0) + v);
+  const combinedList = [...combined.entries()].sort((a,b)=>b[1]-a[1]);
+  renderCloud("#wcC", combinedList, function(){
+    return Math.random() < 0.5 ? CONFIG.partnerA.color : CONFIG.partnerB.color;
+  });
+
+  // Sentiment chart
+  destroyChart("sent");
+  const keys = Object.keys(a.sentMonths).sort();
+  const data = keys.map(k => {
+    const s = a.sentMonths[k];
+    return s.total ? (s.pos - s.neg) / s.total : 0;
+  });
+  STATE.charts.sent = new Chart($("#chartSent"), {
+    type: "line",
+    data: {
+      labels: keys,
+      datasets: [{
+        label: "Sentiment",
+        data,
+        borderColor: PALETTE.rose,
+        backgroundColor: "rgba(232,165,184,0.18)",
+        tension: 0.4,
+        fill: true,
+        pointRadius: 2
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: PALETTE.grid }, ticks: { color: PALETTE.muted, maxRotation: 0, autoSkip: true } },
+        y: { grid: { color: PALETTE.grid }, ticks: { color: PALETTE.muted }, suggestedMin: -0.5, suggestedMax: 1.5 }
+      }
+    }
+  });
+}
+
+function renderTimeline(a){
+  const items = [];
+  if (a.bigDay) items.push({
+    cls: "",
+    title: `Most-texted day: ${fmtDate(a.bigDay.date)}`,
+    body: `${a.bigDay.count} messages exchanged`
+  });
+  if (a.longest) {
+    const m = a.longest;
+    const preview = escapeHTML(m.message.slice(0, 140)) + (m.message.length > 140 ? "…" : "");
+    items.push({
+      cls: "gold",
+      title: `Longest message — by ${escapeHTML(m.sender)}`,
+      body: `<div class="text-sm text-[var(--text)] mt-1">"${preview}"</div><div class="text-xs text-[var(--muted)] mt-1">${fmtDateTime(m.date)} · ${m.message.length} chars</div>`,
+      expandable: m.message.length > 140 ? m.message : null
+    });
+  }
+  if (a.iLoveYou) items.push({
+    cls: "",
+    title: `First "I love you"`,
+    body: `<div class="text-sm mt-1">"${escapeHTML(a.iLoveYou.message)}"</div><div class="text-xs text-[var(--muted)] mt-1">— ${escapeHTML(a.iLoveYou.sender)}, ${fmtDateTime(a.iLoveYou.date)}</div>`
+  });
+  for (const imp of CONFIG.importantDates) {
+    const d = new Date(imp.date);
+    if (!isNaN(d)) items.push({ cls: "gold", title: imp.label || "Important date", body: fmtDate(d) });
+  }
+  for (const j of a.insideHits) {
+    items.push({
+      cls: "star",
+      title: `Inside joke: "${escapeHTML(j.phrase)}"`,
+      body: `<div class="text-sm">${escapeHTML(j.row.message)}</div><div class="text-xs text-[var(--muted)] mt-1">${escapeHTML(j.row.sender)} · ${fmtDateTime(j.row.date)}</div>`
+    });
+  }
+
+  $("#timelineList").innerHTML = items.map((it,i) => `
+    <li class="timeline-item ${it.cls}">
+      <div class="text-[var(--text)] font-medium">${it.title}</div>
+      <div class="text-sm text-[var(--muted)]">${it.body}</div>
+      ${it.expandable ? `<details class="mt-1"><summary class="text-xs text-[var(--rose)] cursor-pointer">Read full</summary><div class="text-sm mt-1 text-[var(--text)]">${escapeHTML(it.expandable)}</div></details>` : ""}
+    </li>`).join("");
+
+  renderMemoryLane();
+}
+
+function renderMemoryLane(){
+  const a = STATE.analysis;
+  if (!a) return;
+  const [A] = STATE.senders;
+  const msgs = memoryLane(STATE.raw, STATE.senders, 8);
+  if (!msgs.length) { $("#memoryLane").innerHTML = '<div class="text-sm text-[var(--muted)]">No data.</div>'; return; }
+  $("#memMeta").textContent = fmtDate(msgs[0].date);
+  $("#memoryLane").innerHTML = msgs.map(m => `
+    <div class="flex"><div class="bubble ${m.sender===A?'a':'b'}">${escapeHTML(m.message)}<div class="bubble-meta">${escapeHTML(m.sender)} · ${m.date.toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"})}</div></div></div>
+  `).join("");
+}
+
+function renderExtras(a){
+  const [A, B] = STATE.senders;
+  // Love language bars
+  const cats = Object.keys(LL_PATTERNS);
+  const totalA = Math.max(1, ...cats.map(c => a.ll[A][c])) ;
+  const totalB = Math.max(1, ...cats.map(c => a.ll[B][c]));
+  const bar = (label, val, max, color) => `
+    <div class="bar-row">
+      <div class="text-sm text-[var(--muted)]">${escapeHTML(label)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.min(100, (val/max)*100).toFixed(1)}%;background:${color}"></div></div>
+      <div class="text-sm text-[var(--text)] text-right">${val}</div>
+    </div>`;
+  $("#loveLangWrap").innerHTML = `
+    <div>
+      <div class="text-[var(--text)] font-medium mb-2" style="color:${CONFIG.partnerA.color}">${escapeHTML(A)}</div>
+      ${cats.map(c => bar(c, a.ll[A][c], totalA, CONFIG.partnerA.color)).join("")}
+    </div>
+    <div>
+      <div class="text-[var(--text)] font-medium mb-2" style="color:${CONFIG.partnerB.color}">${escapeHTML(B)}</div>
+      ${cats.map(c => bar(c, a.ll[B][c], totalB, CONFIG.partnerB.color)).join("")}
+    </div>`;
+
+  // Nicknames
+  const nickBlock = (s, color, list) => `
+    <div>
+      <div class="text-sm font-medium" style="color:${color}">${escapeHTML(s)}</div>
+      ${list.length
+        ? `<div class="flex flex-wrap gap-1.5 mt-2">${list.map(([n,c])=>`<span class="chip" style="background:${color}1a;border-color:${color}55;color:${color}">${escapeHTML(n)} <span class="text-[var(--muted)] font-normal">${c}</span></span>`).join("")}</div>`
+        : `<div class="text-xs text-[var(--muted)] mt-1">no nicknames detected</div>`}
+    </div>`;
+  $("#nicknames").innerHTML = nickBlock(A, CONFIG.partnerA.color, a.nicknames[A]) + nickBlock(B, CONFIG.partnerB.color, a.nicknames[B]);
+
+  // Song suggestion
+  pickSong(a.theme);
+}
+
+function pickSong(theme){
+  const list = SONG_BANK[theme] || SONG_BANK.loving;
+  const pick = list[Math.floor(Math.random()*list.length)];
+  $("#songTitle").textContent = pick;
+  $("#songWhy").textContent = `Dominant theme detected: ${theme}.`;
+}
+
+
+// ============================================================
+// === UI / ORCHESTRATION ===
+// ============================================================
+
+function setStatus(msg, kind){
+  const el = $("#fileStatus");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.style.color = kind === "error" ? "#ffb3b3" : "var(--rose)";
+}
+
+function recompute(){
+  if (!STATE.raw.length || STATE.senders.length < 2) return;
+  const opts = {
+    useStop: $("#toggleStop").checked,
+    useCustom: $("#toggleCustom").checked
+  };
+  STATE.analysis = analyze(STATE.raw, STATE.senders, opts);
+  renderOverview(STATE.analysis);
+  renderWords(STATE.analysis);
+  renderTimeline(STATE.analysis);
+  renderExtras(STATE.analysis);
+}
+
+function loadRows(rows){
+  if (!rows || !rows.length) { setStatus("No messages found in this file.", "error"); return; }
+  // Strip system messages and rows missing required fields
+  rows = rows.filter(r => r && r.date && r.sender && r.message && !isSystemMessage(r.message));
+  // Sort by date
+  rows.sort((a,b) => a.date - b.date);
+  STATE.raw = rows;
+  STATE.senders = pickTwoSenders(rows);
+  if (STATE.senders.length < 2) {
+    setStatus("Need at least two distinct senders. Found: " + STATE.senders.join(", "), "error");
+    return;
+  }
+  // Adopt detected names into config so display labels reflect actual senders
+  if (!CONFIG.partnerA.name) CONFIG.partnerA.name = STATE.senders[0];
+  if (!CONFIG.partnerB.name) CONFIG.partnerB.name = STATE.senders[1];
+  // Note: we keep STATE.senders as the actual sender labels from messages
+  setStatus(`Loaded ${rows.length.toLocaleString()} messages · ${STATE.senders.join(" & ")}`);
+  recompute();
+  maybeSaveLocal();
+}
+
+function loadDemo(){
+  loadRows(DEMO_MESSAGES.map(r => ({ ...r, date: new Date(r.date) })));
+}
+
+async function handleFile(file){
+  setStatus(`Parsing ${file.name}…`);
+  try {
+    const rows = await ingestFile(file);
+    loadRows(rows);
+  } catch (e) {
+    console.error(e);
+    setStatus(e.message || "Could not parse this file. Try a different export.", "error");
+  }
+}
+
+// Save / load locally (opt-in only)
+const LS_KEY = "rdash:data:v1";
+function maybeSaveLocal(){
+  if (!$("#saveLocal").checked) { try { localStorage.removeItem(LS_KEY); } catch(_){} return; }
+  try {
+    const payload = {
+      rows: STATE.raw.map(r => ({ date: r.date.toISOString(), sender: r.sender, message: r.message })),
+      config: CONFIG
+    };
+    localStorage.setItem(LS_KEY, JSON.stringify(payload));
+  } catch (e) { /* quota etc. — silently ignore */ }
+}
+function tryLoadLocal(){
+  try {
+    const s = localStorage.getItem(LS_KEY);
+    if (!s) return false;
+    const p = JSON.parse(s);
+    if (!p || !Array.isArray(p.rows)) return false;
+    $("#saveLocal").checked = true;
+    if (p.config) Object.assign(CONFIG, p.config);
+    syncCustomizeInputs();
+    loadRows(p.rows.map(r => ({ date: new Date(r.date), sender: r.sender, message: r.message })));
+    return true;
+  } catch (_) { return false; }
+}
+
+// ----- Customize panel -----
+function syncCustomizeInputs(){
+  $("#cfgAName").value = CONFIG.partnerA.name;
+  $("#cfgBName").value = CONFIG.partnerB.name;
+  $("#cfgAColor").value = CONFIG.partnerA.color;
+  $("#cfgBColor").value = CONFIG.partnerB.color;
+  $("#cfgNicknames").value = CONFIG.customNicknames.join(", ");
+  $("#cfgJokes").value = CONFIG.insideJokes.join(", ");
+  $("#cfgExclude").value = CONFIG.customExclusions.join(", ");
+  renderImportantDates();
+}
+function renderImportantDates(){
+  $("#impDates").innerHTML = (CONFIG.importantDates.length ? CONFIG.importantDates : []).map((d,i) => `
+    <div class="grid grid-cols-[120px_1fr_36px] gap-2">
+      <input type="date" class="input" value="${d.date||""}" data-imp-date="${i}" />
+      <input class="input" value="${escapeHTML(d.label||"")}" data-imp-label="${i}" placeholder="Label" />
+      <button class="btn btn-ghost" data-imp-del="${i}" aria-label="Remove">✕</button>
+    </div>`).join("");
+}
+function openCustomize(){
+  syncCustomizeInputs();
+  const p = $("#customizePanel"); p.classList.remove("hidden-until"); p.setAttribute("aria-hidden", "false");
+}
+function closeCustomize(){
+  const p = $("#customizePanel"); p.classList.add("hidden-until"); p.setAttribute("aria-hidden", "true");
+}
+function applyCustomize(){
+  CONFIG.partnerA.name  = $("#cfgAName").value.trim() || CONFIG.partnerA.name;
+  CONFIG.partnerB.name  = $("#cfgBName").value.trim() || CONFIG.partnerB.name;
+  CONFIG.partnerA.color = $("#cfgAColor").value || CONFIG.partnerA.color;
+  CONFIG.partnerB.color = $("#cfgBColor").value || CONFIG.partnerB.color;
+  CONFIG.customNicknames  = $("#cfgNicknames").value.split(",").map(s=>s.trim()).filter(Boolean);
+  CONFIG.insideJokes      = $("#cfgJokes").value.split(",").map(s=>s.trim()).filter(Boolean);
+  CONFIG.customExclusions = $("#cfgExclude").value.split(",").map(s=>s.trim()).filter(Boolean);
+  // Important dates
+  CONFIG.importantDates = CONFIG.importantDates.map((d,i) => ({
+    date: ($(`[data-imp-date="${i}"]`)?.value) || d.date,
+    label: ($(`[data-imp-label="${i}"]`)?.value) || d.label
+  }));
+  recompute();
+  maybeSaveLocal();
+  closeCustomize();
+}
+
+// ----- Drag & drop -----
+function bindDropzone(){
+  const dz = $("#dropzone");
+  ["dragenter","dragover"].forEach(ev => dz.addEventListener(ev, e => {
+    e.preventDefault(); e.stopPropagation();
+    dz.classList.add("hover");
+  }));
+  ["dragleave","drop"].forEach(ev => dz.addEventListener(ev, e => {
+    e.preventDefault(); e.stopPropagation();
+    dz.classList.remove("hover");
+  }));
+  dz.addEventListener("drop", e => {
+    const f = e.dataTransfer?.files?.[0];
+    if (f) handleFile(f);
+  });
+  dz.addEventListener("click", e => {
+    if (e.target.closest("label,button,input,a,details,summary")) return;
+    $("#fileInput").click();
+  });
+  dz.addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("#fileInput").click(); }
+  });
+}
+
+// ----- Nav scrollspy -----
+function bindScrollspy(){
+  const sections = ["overview","words","timeline","extras"].map(id => $("#"+id)).filter(Boolean);
+  const io = new IntersectionObserver(entries => {
+    for (const e of entries) {
+      if (e.isIntersecting) {
+        $$('[data-nav]').forEach(a => a.classList.toggle("active", a.dataset.nav === e.target.id));
+      }
+    }
+  }, { rootMargin: "-40% 0px -55% 0px" });
+  sections.forEach(s => io.observe(s));
+}
+
+// ----- Boot -----
+window.addEventListener("DOMContentLoaded", () => {
+  setChartDefaults();
+  bindDropzone();
+  bindScrollspy();
+
+  $("#fileInput").addEventListener("change", e => {
+    const f = e.target.files?.[0];
+    if (f) handleFile(f);
+  });
+  $("#demoBtn").addEventListener("click", loadDemo);
+  $("#rerollBtn").addEventListener("click", renderMemoryLane);
+  $("#songReroll").addEventListener("click", () => { if (STATE.analysis) pickSong(STATE.analysis.theme); });
+  $("#toggleStop").addEventListener("change", recompute);
+  $("#toggleCustom").addEventListener("change", recompute);
+  $("#saveLocal").addEventListener("change", maybeSaveLocal);
+
+  $("#customizeBtn").addEventListener("click", openCustomize);
+  $("#closeCustomize").addEventListener("click", closeCustomize);
+  $("#applyCustomize").addEventListener("click", applyCustomize);
+  $("#addDate").addEventListener("click", () => {
+    CONFIG.importantDates.push({ date: "", label: "" });
+    renderImportantDates();
+  });
+  $("#impDates").addEventListener("click", e => {
+    const del = e.target.closest("[data-imp-del]");
+    if (del) { CONFIG.importantDates.splice(+del.dataset.impDel, 1); renderImportantDates(); }
+  });
+
+  syncCustomizeInputs();
+
+  // Try to restore previous session (opt-in)
+  if (!tryLoadLocal()) {
+    // soft prompt — but show empty state
+    setStatus("");
+  }
+
+  // Re-render word clouds on resize (responsive)
+  let rT;
+  window.addEventListener("resize", () => {
+    clearTimeout(rT);
+    rT = setTimeout(() => { if (STATE.analysis) renderWords(STATE.analysis); }, 250);
+  });
+});
+</script>
+</body>
+</html>
