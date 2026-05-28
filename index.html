@@ -203,7 +203,79 @@
   }
 
   /* Word cloud canvas wrapper */
-  .wcwrap { background: rgba(255,255,255,0.02); border-radius: 12px; overflow: hidden; }
+  .wcwrap {
+    position: relative;
+    background: rgba(255,255,255,0.02);
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(245,235,232,0.05);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .wc-empty {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; color: var(--muted); font-size: 13px;
+    border-radius: 12px;
+    border: 1px dashed rgba(245,235,232,0.1);
+    margin: 8px;
+  }
+
+  /* Pill toggles (replaces small native checkboxes) */
+  .toggle-label {
+    display: inline-flex; align-items: center; gap: 8px;
+    min-height: 36px; padding: 0 14px;
+    border-radius: 999px;
+    background: rgba(232,165,184,0.06);
+    border: 1px solid rgba(232,165,184,0.18);
+    font-size: 13px; color: var(--muted);
+    cursor: pointer; user-select: none;
+    transition: background 200ms ease, color 200ms ease, border-color 200ms ease;
+  }
+  .toggle-label:has(input:checked) {
+    background: rgba(232,165,184,0.12);
+    border-color: rgba(232,165,184,0.4);
+    color: var(--rose);
+  }
+  .toggle-label:has(input:focus-visible) {
+    outline: 2px solid var(--rose);
+    outline-offset: 2px;
+  }
+  .toggle-track {
+    width: 28px; height: 16px; border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid var(--border);
+    position: relative; flex-shrink: 0;
+    transition: background 200ms ease, border-color 200ms ease;
+  }
+  .toggle-label:has(input:checked) .toggle-track {
+    background: rgba(232,165,184,0.45);
+    border-color: rgba(232,165,184,0.55);
+  }
+  .toggle-thumb {
+    position: absolute; top: 1px; left: 1px;
+    width: 12px; height: 12px; border-radius: 999px;
+    background: var(--muted);
+    transition: transform 200ms ease, background 200ms ease;
+  }
+  .toggle-label:has(input:checked) .toggle-thumb {
+    transform: translateX(12px);
+    background: var(--rose);
+  }
+
+  /* Bigram pill differentiation */
+  .chip.chip-bi { border-radius: 8px; font-style: italic; }
+
+  /* Count badge inside word pills */
+  .chip .pill-n {
+    background: rgba(0,0,0,0.25); border-radius: 4px;
+    padding: 1px 5px; font-size: 10px; font-weight: 600;
+    letter-spacing: 0.02em; margin-left: 4px;
+  }
+
+  /* Emoji ranked rows */
+  .emoji-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+  .emoji-row .glyph { font-size: 20px; line-height: 1; width: 24px; text-align: center; }
+  .emoji-row .n { font-size: 12px; color: var(--muted); }
 
   /* Bar (love language) */
   .bar-row { display: grid; grid-template-columns: 110px 1fr 44px; gap: 10px; align-items: center; margin-bottom: 8px; }
@@ -533,24 +605,24 @@
 
   <!-- WORDS -->
   <section id="words" aria-labelledby="wdh">
-    <div class="flex items-end justify-between mb-4">
-      <div>
-        <p class="label">Section 02</p>
-        <h2 id="wdh" class="serif text-2xl sm:text-3xl">Words &amp; Sentiment</h2>
-      </div>
-      <div class="flex items-center gap-3 text-xs">
-        <label class="inline-flex items-center gap-2 cursor-pointer">
-          <input id="toggleStop" type="checkbox" class="accent-[var(--rose)]" checked />
-          <span>Exclude common words</span>
-        </label>
-        <label class="inline-flex items-center gap-2 cursor-pointer">
-          <input id="toggleCustom" type="checkbox" class="accent-[var(--rose)]" checked />
-          <span>Exclude custom</span>
-        </label>
-      </div>
+    <div class="mb-4">
+      <p class="label">Section 02</p>
+      <h2 id="wdh" class="serif text-2xl sm:text-3xl">Words &amp; Sentiment</h2>
+    </div>
+    <div class="flex flex-wrap gap-2 mb-4">
+      <label class="toggle-label">
+        <input id="toggleStop" type="checkbox" class="sr-only" checked />
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        <span>Exclude common words</span>
+      </label>
+      <label class="toggle-label">
+        <input id="toggleCustom" type="checkbox" class="sr-only" checked />
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        <span>Exclude custom words</span>
+      </label>
     </div>
 
-    <div class="grid lg:grid-cols-3 gap-4">
+    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
       <div class="card p-4">
         <div class="flex items-center justify-between mb-2">
           <div class="serif text-lg" id="wcAName">Partner A</div>
@@ -581,14 +653,15 @@
         <div class="wcwrap"><canvas id="wcC" width="400" height="260" aria-label="Combined word cloud" role="img"></canvas></div>
 
         <div class="label mt-3">Top 10 emojis</div>
-        <div class="grid grid-cols-2 gap-3 mt-1">
+        <div style="height:1px;background:var(--border);margin:8px 0 4px;"></div>
+        <div class="grid grid-cols-2 gap-x-4 gap-y-2 mt-1">
           <div>
-            <div class="text-xs text-[var(--muted)]" id="emA_name">A</div>
-            <div id="emA" class="flex flex-wrap gap-1.5 mt-1"></div>
+            <div class="text-xs text-[var(--muted)] mb-1" id="emA_name">A</div>
+            <div id="emA"></div>
           </div>
           <div>
-            <div class="text-xs text-[var(--muted)]" id="emB_name">B</div>
-            <div id="emB" class="flex flex-wrap gap-1.5 mt-1"></div>
+            <div class="text-xs text-[var(--muted)] mb-1" id="emB_name">B</div>
+            <div id="emB"></div>
           </div>
         </div>
       </div>
@@ -599,7 +672,7 @@
         <div class="serif text-lg">Sentiment over time</div>
         <div class="text-xs text-[var(--muted)]">positive − negative (lexicon-based)</div>
       </div>
-      <div style="height: 240px"><canvas id="chartSent" aria-label="Sentiment over time chart" role="img"></canvas></div>
+      <div style="height: clamp(200px, 28vw, 280px)"><canvas id="chartSent" aria-label="Sentiment over time chart" role="img"></canvas></div>
     </div>
   </section>
 
@@ -1449,52 +1522,70 @@ function renderWords(a){
   $("#emB_name").textContent = B;
 
   // Render top-words pills
-  const pill = (w, n, max, color) => {
+  const pill = (w, n, max, color, isBi) => {
     const scale = max ? (0.7 + 0.5 * (n / max)) : 1;
-    return `<span class="chip" style="background:${color}1a;border-color:${color}55;color:${color};font-size:${Math.min(14, 11*scale).toFixed(0)}px">${escapeHTML(w)} <span class="text-[var(--muted)] font-normal">${n}</span></span>`;
+    const cls = isBi ? "chip chip-bi" : "chip";
+    const bg = isBi ? color + "0d" : color + "1a";
+    const bd = isBi ? color + "33" : color + "55";
+    return `<span class="${cls}" style="background:${bg};border-color:${bd};color:${color};font-size:${Math.min(14, 11*scale).toFixed(0)}px">${escapeHTML(w)}<span class="pill-n">${n}</span></span>`;
   };
-  const renderList = (sel, list, color) => {
+  const renderList = (sel, list, color, isBi) => {
+    const el = $(sel);
+    if (!list.length) { el.innerHTML = '<span class="text-xs text-[var(--muted)]">—</span>'; return; }
     const max = list[0]?.[1] || 1;
-    $(sel).innerHTML = list.map(([w,n]) => pill(w,n,max,color)).join("");
+    el.innerHTML = list.map(([w,n]) => pill(w,n,max,color,isBi)).join("");
   };
-  renderList("#topWordsA", a.words[A], CONFIG.partnerA.color);
-  renderList("#topWordsB", a.words[B], CONFIG.partnerB.color);
-  renderList("#topBiA", a.bigrams[A], CONFIG.partnerA.color);
-  renderList("#topBiB", a.bigrams[B], CONFIG.partnerB.color);
+  renderList("#topWordsA", a.words[A], CONFIG.partnerA.color, false);
+  renderList("#topWordsB", a.words[B], CONFIG.partnerB.color, false);
+  renderList("#topBiA", a.bigrams[A], CONFIG.partnerA.color, true);
+  renderList("#topBiB", a.bigrams[B], CONFIG.partnerB.color, true);
 
-  // Emojis
+  // Emojis — ranked list rows
   const renderEmoji = (sel, list) => {
     $(sel).innerHTML = list.length
-      ? list.map(([e,n]) => `<span class="chip" style="background:rgba(255,255,255,0.05);border-color:var(--border);color:var(--text);font-size:14px"><span style="font-size:18px;line-height:1">${e}</span> <span class="text-[var(--muted)]">${n}</span></span>`).join("")
-      : '<span class="text-xs text-[var(--muted)]">no emojis found</span>';
+      ? list.map(([e,n]) => `<div class="emoji-row"><span class="glyph">${e}</span><span class="n">${n}×</span></div>`).join("")
+      : '<div class="text-xs text-[var(--muted)]">no emojis found</div>';
   };
   renderEmoji("#emA", a.emojis[A]);
   renderEmoji("#emB", a.emojis[B]);
 
   // Word clouds (via wordcloud2.js)
-  const wcOptsBase = {
-    gridSize: 6, weightFactor: function(size){ return Math.max(10, Math.min(36, size * 4)); },
-    fontFamily: "Fraunces, Inter, sans-serif",
-    backgroundColor: "transparent", rotateRatio: 0.15,
-    shrinkToFit: true, drawOutOfBound: false
-  };
+  // Calibrate weightFactor against the dataset so the largest word lands ~28px
+  // regardless of absolute count. wordcloud2 passes the raw weight from the list.
   const renderCloud = (canvasId, words, color) => {
     const canvas = $(canvasId);
     if (!canvas || !window.WordCloud) return;
-    // resize canvas to displayed width
-    const w = canvas.parentElement.clientWidth || 400;
+    // Always (re)size to displayed width
+    const w = canvas.parentElement.clientWidth || 360;
     canvas.width = w; canvas.height = 260;
-    const list = words.slice(0, 60).map(([w,n]) => [w, n]);
+
+    // Remove any previous empty-state overlay
+    const prevEmpty = canvas.parentElement.querySelector(".wc-empty");
+    if (prevEmpty) prevEmpty.remove();
+    canvas.style.display = "";
+
+    const list = words.slice(0, 40).map(([w,n]) => [w, n]);
     if (!list.length) {
-      const ctx = canvas.getContext("2d");
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-      ctx.fillStyle = PALETTE.muted; ctx.font = "14px Inter"; ctx.textAlign = "center";
-      ctx.fillText("Not enough words yet", canvas.width/2, canvas.height/2);
+      canvas.style.display = "none";
+      const fb = document.createElement("div");
+      fb.className = "wc-empty";
+      fb.innerHTML = `
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true" style="opacity:0.35"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>
+        <span>Not enough words yet</span>`;
+      canvas.parentElement.appendChild(fb);
       return;
     }
+    // Scale so the top word ~ 28px, smallest ~ 9px
+    const maxN = list[0][1] || 1;
     try {
       WordCloud(canvas, {
-        ...wcOptsBase,
+        gridSize: 4,
+        weightFactor: function(n){ return Math.max(9, (n / maxN) * 28); },
+        fontFamily: "Fraunces, Inter, sans-serif",
+        backgroundColor: "transparent",
+        rotateRatio: 0.15,
+        shrinkToFit: true,
+        drawOutOfBound: false,
         list,
         color: typeof color === "function" ? color : function(){ return color; }
       });
@@ -1514,14 +1605,22 @@ function renderWords(a){
     return Math.random() < 0.5 ? CONFIG.partnerA.color : CONFIG.partnerB.color;
   });
 
-  // Sentiment chart
+  // Sentiment chart — fit y-axis to actual data range, with a soft zero baseline
   destroyChart("sent");
   const keys = Object.keys(a.sentMonths).sort();
   const data = keys.map(k => {
     const s = a.sentMonths[k];
     return s.total ? (s.pos - s.neg) / s.total : 0;
   });
-  STATE.charts.sent = new Chart($("#chartSent"), {
+  const yMin = Math.min(0, ...data, 0) - 0.05;
+  const yMax = Math.max(0.2, ...data) + 0.1;
+  const sentCanvas = $("#chartSent");
+  const sentCtx = sentCanvas.getContext("2d");
+  const grad = sentCtx.createLinearGradient(0, 0, 0, sentCanvas.height || 240);
+  grad.addColorStop(0,   "rgba(232,165,184,0.28)");
+  grad.addColorStop(0.6, "rgba(232,165,184,0.08)");
+  grad.addColorStop(1,   "rgba(232,165,184,0.00)");
+  STATE.charts.sent = new Chart(sentCanvas, {
     type: "line",
     data: {
       labels: keys,
@@ -1529,10 +1628,11 @@ function renderWords(a){
         label: "Sentiment",
         data,
         borderColor: PALETTE.rose,
-        backgroundColor: "rgba(232,165,184,0.18)",
+        backgroundColor: grad,
         tension: 0.4,
         fill: true,
-        pointRadius: 2
+        pointRadius: 2,
+        pointBackgroundColor: PALETTE.rose
       }]
     },
     options: {
@@ -1540,7 +1640,11 @@ function renderWords(a){
       plugins: { legend: { display: false } },
       scales: {
         x: { grid: { color: PALETTE.grid }, ticks: { color: PALETTE.muted, maxRotation: 0, autoSkip: true } },
-        y: { grid: { color: PALETTE.grid }, ticks: { color: PALETTE.muted }, suggestedMin: -0.5, suggestedMax: 1.5 }
+        y: {
+          min: yMin, max: yMax,
+          grid: { color: PALETTE.grid },
+          ticks: { color: PALETTE.muted, callback: v => v.toFixed(1) }
+        }
       }
     }
   });
