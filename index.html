@@ -366,13 +366,11 @@
   .year-tile .year-row .v { color: var(--text); font-weight: 500; }
 
   /* Section fade-in on scroll */
-  .reveal {
-    opacity: 0; transform: translateY(12px);
-    transition: opacity 600ms ease, transform 600ms ease;
-  }
+  .reveal { transition: opacity 600ms ease, transform 600ms ease; }
+  .reveal.pending { opacity: 0; transform: translateY(12px); }
   .reveal.in { opacity: 1; transform: none; }
   @media (prefers-reduced-motion: reduce) {
-    .reveal { opacity: 1; transform: none; transition: none; }
+    .reveal.pending { opacity: 1; transform: none; transition: none; }
   }
 
   /* Story of Us strip */
