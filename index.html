@@ -1188,12 +1188,17 @@ function isSystemMessage(text){
 }
 
 // Strip noise that imessage-exporter injects into message bodies.
+// - Attachment paths from the local Messages cache (path-only messages → empty;
+//   mixed text+path messages → keep the text only)
 // - "This message responded to an earlier message." appended after every quote-reply
 // - "Edited X later: <final>" duplicates the pre-edit text — keep only the final
 // - Leading "<Mon DD, YYYY H:MM:SS AM> " timestamp prefix that wraps edited messages
+const ATTACHMENT_PATH_RE = /(?:^|\n)\s*\/Users\/[^\n]*\/Messages\/Attachments\/[^\n]+/g;
 function cleanMessageText(text){
   if (!text) return "";
   let s = String(text);
+  // Remove attachment path lines (Library/Messages/Attachments/...)
+  s = s.replace(ATTACHMENT_PATH_RE, "");
   // Drop the appended quote-reply marker
   s = s.replace(/\n?\s*This message responded to an earlier message\.\s*$/i, "");
   // If the body is "<original>\nEdited X later: <final>", keep only <final>
