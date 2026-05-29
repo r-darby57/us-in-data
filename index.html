@@ -1181,7 +1181,40 @@ const SYSTEM_SUBSTRINGS = [
 function isSystemMessage(text){
   if (!text) return true;
   const t = String(text).toLowerCase();
-  return SYSTEM_SUBSTRINGS.some(s => t.includes(s));
+  if (SYSTEM_SUBSTRINGS.some(s => t.includes(s))) return true;
+  // imessage-exporter location-share / find-my events
+  if (/^find my:\s+(started|stopped) sharing/i.test(t.trim())) return true;
+  return false;
+}
+
+// Strip noise that imessage-exporter injects into message bodies.
+// - "This message responded to an earlier message." appended after every quote-reply
+// - "Edited X later: <final>" duplicates the pre-edit text — keep only the final
+// - Leading "<Mon DD, YYYY H:MM:SS AM> " timestamp prefix that wraps edited messages
+function cleanMessageText(text){
+  if (!text) return "";
+  let s = String(text);
+  // Drop the appended quote-reply marker
+  s = s.replace(/\n?\s*This message responded to an earlier message\.\s*$/i, "");
+  // If the body is "<original>\nEdited X later: <final>", keep only <final>
+  const edM = s.match(/\n\s*Edited [^\n:]*later:\s*([\s\S]*)$/i);
+  if (edM) s = edM[1];
+  // Strip leading repeated-timestamp prefix iMessage adds before edited bodies
+  s = s.replace(/^[A-Z][a-z]{2}\s+\d{1,2},\s+\d{4}\s+\d{1,2}:\d{2}:\d{2}\s*[AP]M\s*/i, "");
+  return s.trim();
+}
+
+// "I love you" should only count when it's a genuine declaration.
+// Skip messages that are link previews / song shares where the phrase
+// appears inside a song title or surrounding metadata.
+function isGenuineILoveYou(msg){
+  if (!msg) return false;
+  if (!/\bi\s+love\s+you\b/i.test(msg)) return false;
+  // Exclude any message that contains a URL — song/article shares
+  if (/https?:\/\//i.test(msg)) return false;
+  // Exclude Apple Music / Spotify metadata footers
+  if (/·\s*Song\s*·|·\s*Album\s*·|spotify\.link|music\.apple/i.test(msg)) return false;
+  return true;
 }
 
 // Parse WhatsApp .txt — handles iOS [12/3/24, 9:14:22 PM] Name: msg
@@ -1519,8 +1552,8 @@ function analyze(rows, senders, opts){
     if (!longest || r.message.length > longest.message.length) longest = r;
   }
 
-  // First "I love you"
-  const iLoveYou = rows.find(r => (r.sender===A||r.sender===B) && /\bi\s+love\s+you\b/i.test(r.message));
+  // First "I love you" — skip song shares and link previews
+  const iLoveYou = rows.find(r => (r.sender===A||r.sender===B) && isGenuineILoveYou(r.message));
 
   // Inside joke hits
   const insideHits = [];
@@ -2166,6 +2199,11 @@ function recompute(){
 
 function loadRows(rows){
   if (!rows || !rows.length) { setStatus("No messages found in this file.", "error"); return; }
+  // Clean exporter-injected noise (quote markers, edited duplicates, timestamps)
+  rows = rows.map(r => {
+    if (!r || !r.message) return r;
+    return { ...r, message: cleanMessageText(r.message) };
+  });
   // Strip system messages and rows missing required fields
   rows = rows.filter(r => r && r.date && r.sender && r.message && !isSystemMessage(r.message));
   // Sort by date
